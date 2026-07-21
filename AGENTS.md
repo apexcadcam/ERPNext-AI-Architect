@@ -42,5 +42,10 @@ When in doubt between two designs, prefer the one that:
 - Uses configuration (Property Setter, Workflow, Client/Server Script) over custom code — see [R003](rules/R003-low-code-configuration-over-code.md).
 - Keeps fixtures scoped, module-tagged, and reversible — see [R004](rules/R004-fixture-and-metadata-integrity.md).
 - Installs and migrates idempotently without silently overwriting admin-managed state — see [R005](rules/R005-idempotent-upgrade-safe-deployment.md).
+- Is fully reproducible from git alone — fixtures for UI config, idempotent patches for data — see [R006](rules/R006-full-reproducibility-fixtures-and-patches.md).
+- Keeps hook functions thin, with real logic in a testable service/engine layer — see [R007](rules/R007-thin-hooks-centralized-service-layer.md).
+- Uses Role Permission Manager / User Permissions instead of hand-written access checks — see [R008](rules/R008-native-permission-system-over-custom-checks.md).
+- Builds only what's justified by a measured need, not a hypothetical one — see [R009](rules/R009-yagni-no-speculative-infrastructure.md).
+- Gives each DocType exactly one clearly-bounded responsibility — see [R010](rules/R010-one-doctype-one-responsibility.md).
 
 Agents that skip this procedure and propose a Bad Pattern from any rule file are considered to have failed the task, regardless of whether the code runs.
