@@ -1,13 +1,22 @@
 # R005: Idempotent, Upgrade-Safe Deployment
 
-## Principle
+## Status
+Stable
+
+## Risk Level
+**High**
+
+## Rule
 Installation and permission logic must survive partial failure and repeated runs without corrupting state:
 1. `after_install` (and any migration hook) must wrap **each provisioning step** in its own `try/except`, never one monolithic uncaught block.
 2. `hooks.py` must explicitly declare `required_apps` for any cross-app dependency.
 3. Reports and permission sets must be **UI-managed**: ship with `is_standard: "No"` and an empty `roles` list, import once via `after_install`, then leave role assignment entirely to the site administrator through the UI.
 
-## Architectural Impact
-On Frappe Cloud specifically, a single unhandled exception inside `after_install` aborts the entire install — and the deploy sandbox often surfaces this as an **empty, silent failure log**, making it nearly impossible to diagnose after the fact. A missing `required_apps` entry means the app installs successfully in dev (where the dependency happens to already be present) and then hard-fails on a clean production site. Hard-coding `roles` into a Report's JSON means every fixture sync **overwrites whatever roles the customer actually assigned in the UI**, silently reverting their permission changes on the next deploy.
+## Rationale
+A single unhandled step inside installation or migration can abort the entire process with no diagnosable trace. A missing cross-app dependency declaration can pass in a development environment where the dependency happens to already be present, then hard-fail on a clean production site. Hard-coding roles into a Report's JSON means every fixture sync overwrites whatever roles an administrator actually assigned through the UI, silently reverting real permission changes.
+
+## Scope
+Applies to any `after_install`/migration hook, any cross-app dependency, and any Report or permission set shipped by a custom app.
 
 ## Bad Pattern
 ```python
@@ -40,5 +49,15 @@ required_apps = ["frappe", "erpnext"]
 {"is_standard": "No", "roles": []}
 ```
 
-## Risk Level
-**High**
+## Exceptions
+None.
+
+## Evidence
+**Origin:** Legacy Production Experience
+**Additional:** None
+
+## Related Rules
+[R004 — Fixture & Metadata Integrity](R004-fixture-and-metadata-integrity.md); [R006 — Full Reproducibility](R006-full-reproducibility-fixtures-and-patches.md)
+
+## Related Anti-Patterns
+None yet.
