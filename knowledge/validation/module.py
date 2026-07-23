@@ -26,7 +26,8 @@ from functools import partial
 
 from knowledge.validation import gates
 from knowledge.validation.approval import PendingApprovalStore
-from knowledge.validation.providers import PrecedenceProvider, SourceVerifier, TrustScoreProvider
+from knowledge.conflict.providers import PrecedenceProvider
+from knowledge.validation.providers import SourceVerifier, TrustScoreProvider
 from knowledge.validation.state import KnowledgeStore
 from runtime.container.di import Container
 from runtime.modules.base import HealthCheckResult, Module

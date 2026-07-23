@@ -35,10 +35,11 @@ from knowledge.artifacts import (
     Pattern,
     Workflow,
 )
-from knowledge.conflict import ConflictCase, ConflictClaim, resolve_conflict
+from knowledge.conflict import ConflictCase, TAG_CONTRADICTS_STABLE_RULE, resolve_conflict, to_conflict_claim
+from knowledge.conflict.providers import PrecedenceProvider
 from knowledge.validation.approval import PendingApprovalStore
 from knowledge.validation.confidence import compute_confidence_for_artifact
-from knowledge.validation.providers import PrecedenceProvider, SourceVerifier, TrustScoreProvider
+from knowledge.validation.providers import SourceVerifier, TrustScoreProvider
 from knowledge.validation.state import KnowledgeStore
 from runtime.events.bus import Event, EventBus
 from runtime.pipeline.engine import StageOutcome
@@ -59,14 +60,9 @@ _PASSES_THROUGH = frozenset(
     }
 )
 
-#: Tag facets Sprint 2 uses as the seam for per-claim facts the artifact
-#: envelope has no dedicated field for (KNOWLEDGE_ARTIFACTS.md §1's `tags`
-#: are "kebab-case facets... for index grouping" — the same convention
-#: KNOWLEDGE_EXTRACTION_SPEC.md already uses for `verified-fixed`,
-#: `interim-workaround`, `third-party-observed`, etc.).
-TAG_STAFF_AUTHORED = "staff-authored"
-TAG_AFTER_DOCS_UPDATE = "authored-after-docs-update"
-TAG_CONTRADICTS_STABLE_RULE = "contradicts-stable-rule"
+#: `TAG_CONTRADICTS_STABLE_RULE` is re-exported from knowledge.conflict.tags
+#: (imported above) so it stays the single source of truth this module and
+#: knowledge/conflict/providers.py both read from.
 TAG_LOW_CONFIDENCE = "low-confidence"
 
 #: KNOWLEDGE_VALIDATION_SPEC.md §1's supported schema versions.
@@ -122,18 +118,6 @@ def _claim_body(artifact: ContentArtifact) -> tuple[object, ...]:
     if isinstance(artifact, Workflow):
         return (tuple((step.order, step.description) for step in artifact.content.steps),)
     return ()
-
-
-def _to_conflict_claim(artifact: ContentArtifact, precedence_provider: PrecedenceProvider) -> ConflictClaim:
-    return ConflictClaim(
-        artifact_id=artifact.id,
-        precedence_tier=precedence_provider.precedence_tier(artifact),
-        version_applies_to=artifact.version.applies_to,
-        version_confidence=artifact.version.version_confidence,
-        staff_authored=TAG_STAFF_AUTHORED in artifact.tags,
-        authored_after_docs_last_update=TAG_AFTER_DOCS_UPDATE in artifact.tags,
-        contradicts_stable_rule=TAG_CONTRADICTS_STABLE_RULE in artifact.tags,
-    )
 
 
 def _trust_threshold_for(artifact: ContentArtifact) -> int:
@@ -226,8 +210,8 @@ def version_conflict_detection(
             continue  # same claim, not a disagreement
 
         case = ConflictCase(
-            claim_a=_to_conflict_claim(artifact, precedence_provider),
-            claim_b=_to_conflict_claim(existing, precedence_provider),
+            claim_a=to_conflict_claim(artifact, precedence_provider),
+            claim_b=to_conflict_claim(existing, precedence_provider),
         )
         resolution = resolve_conflict(case)
         if event_bus is not None:

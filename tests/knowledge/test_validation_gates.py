@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from knowledge.artifacts import ArtifactStatus, BestPractice, KnowledgeAPI, Pattern
-from knowledge.conflict import PrecedenceTier
+from knowledge.conflict import TAG_CONTRADICTS_STABLE_RULE, PrecedenceTier
 from knowledge.validation import gates
 from knowledge.validation.state import KnowledgeStore
 from runtime.pipeline.engine import PipelineContext, StageOutcome
@@ -267,7 +267,7 @@ def test_trust_verification_uses_the_lower_threshold_for_third_party_patterns(
 def test_engineering_review_escalates_a_claim_tagged_as_contradicting_a_stable_rule(
     make_pattern: Callable[..., Pattern], pipeline_context: PipelineContext
 ) -> None:
-    pattern = make_pattern(tags=(gates.TAG_CONTRADICTS_STABLE_RULE,))
+    pattern = make_pattern(tags=(TAG_CONTRADICTS_STABLE_RULE,))
     result, outcome = gates.engineering_review(pattern, pipeline_context)
 
     assert outcome is StageOutcome.SUCCESS

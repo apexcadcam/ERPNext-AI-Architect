@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
+from knowledge.artifacts import (
+    ArtifactMetadata,
+    ArtifactStatus,
+    ArtifactVersionInfo,
+    KnowledgeAPI,
+    KnowledgeConflict,
+    KnowledgeConflictContent,
+)
 from knowledge.conflict import (
     ConflictCase,
     ConflictClaim,
@@ -11,8 +20,11 @@ from knowledge.conflict import (
     PrecedenceTier,
     resolve_conflict,
     resolve_conflict_stage,
+    resolve_conflicts_in_batch,
 )
 from runtime.pipeline.engine import PipelineContext, StageOutcome
+
+from tests.knowledge.conftest import StaticPrecedenceProvider
 
 
 def test_precedence_hierarchy_orders_by_tier_not_confidence() -> None:
@@ -203,3 +215,72 @@ def test_resolve_conflict_stage_matches_the_pipeline_stage_contract() -> None:
 
     assert outcome is StageOutcome.SUCCESS
     assert resolution.winning_claim_id == "KA-0001"
+
+
+def _knowledge_conflict(claim_a_id: str, claim_b_id: str) -> KnowledgeConflict:
+    return KnowledgeConflict(
+        id="KC-0001",
+        metadata=ArtifactMetadata(
+            extracted_at="2026-01-01T00:00:00Z", extraction_method="fixture", extractor_version="0.1.0"
+        ),
+        version=ArtifactVersionInfo(),
+        content=KnowledgeConflictContent(claim_a_id=claim_a_id, claim_b_id=claim_b_id, scope="v15"),
+    )
+
+
+def test_resolve_conflicts_in_batch_supersedes_the_losing_claim_deterministically(
+    make_knowledge_api: Callable[..., KnowledgeAPI], pipeline_context: PipelineContext
+) -> None:
+    winner = make_knowledge_api(api_id="KA-0001")
+    loser = make_knowledge_api(api_id="KA-0002")
+    conflict = _knowledge_conflict("KA-0001", "KA-0002")
+    precedence = StaticPrecedenceProvider(
+        overrides={
+            "KA-0001": PrecedenceTier.OFFICIAL_SOURCE_CODE,
+            "KA-0002": PrecedenceTier.OFFICIAL_DOCUMENTATION,
+        }
+    )
+
+    result, outcome = resolve_conflicts_in_batch(
+        [winner, loser, conflict], pipeline_context, precedence_provider=precedence
+    )
+
+    assert outcome is StageOutcome.SUCCESS
+    by_id = {item.id: item for item in result if not isinstance(item, KnowledgeConflict)}
+    assert by_id["KA-0001"].status is ArtifactStatus.DRAFT
+    assert by_id["KA-0002"].status is ArtifactStatus.SUPERSEDED
+    assert not any(isinstance(item, KnowledgeConflict) for item in result)  # resolved, not left dangling
+
+
+def test_resolve_conflicts_in_batch_leaves_an_unresolvable_conflict_in_the_batch(
+    make_knowledge_api: Callable[..., KnowledgeAPI], pipeline_context: PipelineContext
+) -> None:
+    claim_a = make_knowledge_api(api_id="KA-0001")
+    claim_b = make_knowledge_api(api_id="KA-0002")
+    conflict = _knowledge_conflict("KA-0001", "KA-0002")
+    precedence = StaticPrecedenceProvider(
+        tier=PrecedenceTier.COMMUNITY_FORUM_CONSENSUS
+    )  # same tier, undecided
+
+    result, outcome = resolve_conflicts_in_batch(
+        [claim_a, claim_b, conflict], pipeline_context, precedence_provider=precedence
+    )
+
+    assert outcome is StageOutcome.SUCCESS
+    remaining_conflicts = [item for item in result if isinstance(item, KnowledgeConflict)]
+    assert len(remaining_conflicts) == 1  # surfaced, not silently dropped
+    by_id = {item.id: item for item in result if not isinstance(item, KnowledgeConflict)}
+    assert by_id["KA-0001"].status is ArtifactStatus.DRAFT
+    assert by_id["KA-0002"].status is ArtifactStatus.DRAFT
+
+
+def test_resolve_conflicts_in_batch_passes_through_a_conflict_whose_claims_are_missing(
+    pipeline_context: PipelineContext,
+) -> None:
+    conflict = _knowledge_conflict("KA-9998", "KA-9999")  # neither claim is in this batch
+    precedence = StaticPrecedenceProvider()
+
+    result, outcome = resolve_conflicts_in_batch([conflict], pipeline_context, precedence_provider=precedence)
+
+    assert outcome is StageOutcome.SUCCESS
+    assert result == [conflict]

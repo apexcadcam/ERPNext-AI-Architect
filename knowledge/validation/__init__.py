@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from knowledge.conflict.providers import PrecedenceProvider
 from knowledge.validation.approval import ApprovalDecision, PendingApprovalStore
 from knowledge.validation.module import ValidatorModule
-from knowledge.validation.providers import PrecedenceProvider, SourceVerifier, TrustScoreProvider
+from knowledge.validation.providers import SourceVerifier, TrustScoreProvider
 from knowledge.validation.state import KnowledgeStore
 
 __all__ = [

@@ -9,6 +9,10 @@ facts depend on these protocols instead — a future Crawler/Catalog Sprint
 supplies a real implementation, and no gate logic changes when it does.
 See SPRINT2_IMPLEMENTATION_PLAN.md §8 for the risk this documents.
 
+`PrecedenceProvider` (Version Conflict Detection's own seam) lives in
+knowledge/conflict/providers.py instead of here — see that module's
+docstring for why keeping it there avoids a circular import.
+
 No default "always succeeds" implementation is provided here deliberately —
 that would be indistinguishable from a disguised stub silently letting
 every artifact through. Callers (including this Sprint's own tests) supply
@@ -20,7 +24,6 @@ from __future__ import annotations
 from typing import Protocol
 
 from knowledge.artifacts import ContentArtifact
-from knowledge.conflict import PrecedenceTier
 
 
 class SourceVerifier(Protocol):
@@ -37,12 +40,3 @@ class TrustScoreProvider(Protocol):
     """
 
     def trust_score(self, artifact: ContentArtifact) -> int: ...
-
-
-class PrecedenceProvider(Protocol):
-    """Which KNOWLEDGE_CONFLICT_RESOLUTION.md §1 precedence tier this
-    artifact's originating source occupies — needed by Version Conflict
-    Detection to build a `ConflictCase` for `resolve_conflict()`.
-    """
-
-    def precedence_tier(self, artifact: ContentArtifact) -> PrecedenceTier: ...
