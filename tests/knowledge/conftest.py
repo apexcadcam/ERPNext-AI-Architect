@@ -8,18 +8,26 @@ tests/conftest.py already establishes for the Runtime's own tests.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pytest
 
 from knowledge.artifacts import (
     ArtifactMetadata,
     ArtifactVersionInfo,
+    BestPractice,
+    BestPracticeContent,
+    ContentArtifact,
     KnowledgeAPI,
     KnowledgeAPIContent,
     KnowledgeDocument,
     KnowledgeDocumentContent,
+    Pattern,
+    PatternContent,
     SourceReference,
 )
+from knowledge.conflict import PrecedenceTier
+from runtime.pipeline.engine import PipelineContext
 
 
 def _metadata(**overrides: object) -> ArtifactMetadata:
@@ -88,3 +96,107 @@ def make_knowledge_api() -> Callable[..., KnowledgeAPI]:
         return KnowledgeAPI(**defaults)  # type: ignore[arg-type]
 
     return _make
+
+
+@pytest.fixture
+def make_pattern() -> Callable[..., Pattern]:
+    def _make(pattern_id: str = "PAT-0001", **overrides: object) -> Pattern:
+        defaults: dict[str, object] = {
+            "id": pattern_id,
+            "metadata": _metadata(),
+            "version": ArtifactVersionInfo(applies_to="v15"),
+            "confidence": 0.9,
+            "source_references": (_source_ref(),),
+            "content": PatternContent(
+                title="Thin Hooks, Centralized Service Layer",
+                problem="fat hooks with business logic inline",
+                solution_shape="hook delegates to a testable service module",
+            ),
+        }
+        defaults.update(overrides)
+        return Pattern(**defaults)  # type: ignore[arg-type]
+
+    return _make
+
+
+@pytest.fixture
+def make_best_practice() -> Callable[..., BestPractice]:
+    def _make(bp_id: str = "BP-0001", **overrides: object) -> BestPractice:
+        defaults: dict[str, object] = {
+            "id": bp_id,
+            "metadata": _metadata(),
+            "version": ArtifactVersionInfo(applies_to="v15"),
+            "confidence": 0.7,
+            "source_references": (_source_ref(),),
+            "content": BestPracticeContent(
+                title="Prefer Workflow over Client Script for state transitions",
+                recommendation="use the Workflow doctype",
+            ),
+        }
+        defaults.update(overrides)
+        return BestPractice(**defaults)  # type: ignore[arg-type]
+
+    return _make
+
+
+class StaticSourceVerifier:
+    """A `SourceVerifier` test double returning a fixed, configurable result."""
+
+    def __init__(self, result: bool = True) -> None:
+        self.result = result
+
+    def verify(self, artifact: ContentArtifact) -> bool:
+        del artifact
+        return self.result
+
+
+class StaticTrustScoreProvider:
+    """A `TrustScoreProvider` test double: a default score, with optional
+    per-artifact-id overrides for tests that need one artifact to differ.
+    """
+
+    def __init__(self, score: int = 100, overrides: dict[str, int] | None = None) -> None:
+        self.score = score
+        self.overrides = overrides or {}
+
+    def trust_score(self, artifact: ContentArtifact) -> int:
+        return self.overrides.get(artifact.id, self.score)
+
+
+class StaticPrecedenceProvider:
+    """A `PrecedenceProvider` test double: a default tier, with optional
+    per-artifact-id overrides.
+    """
+
+    def __init__(
+        self,
+        tier: PrecedenceTier = PrecedenceTier.OFFICIAL_DOCUMENTATION,
+        overrides: dict[str, PrecedenceTier] | None = None,
+    ) -> None:
+        self.tier = tier
+        self.overrides = overrides or {}
+
+    def precedence_tier(self, artifact: ContentArtifact) -> PrecedenceTier:
+        return self.overrides.get(artifact.id, self.tier)
+
+
+@pytest.fixture
+def source_verifier() -> StaticSourceVerifier:
+    return StaticSourceVerifier(result=True)
+
+
+@pytest.fixture
+def trust_score_provider() -> StaticTrustScoreProvider:
+    return StaticTrustScoreProvider(score=100)
+
+
+@pytest.fixture
+def precedence_provider() -> StaticPrecedenceProvider:
+    return StaticPrecedenceProvider(tier=PrecedenceTier.OFFICIAL_DOCUMENTATION)
+
+
+@pytest.fixture
+def pipeline_context() -> PipelineContext:
+    return PipelineContext(
+        pipeline_run_id="run-1", correlation_id="run-1", pipeline_name="test", started_at=datetime.now(UTC)
+    )
