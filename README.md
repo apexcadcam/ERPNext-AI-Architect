@@ -27,6 +27,11 @@ This repository codifies the recurring, costly architectural mistakes made on re
 | [`research/`](research/) | Open questions and investigations, following [RESEARCH_FRAMEWORK.md](research/RESEARCH_FRAMEWORK.md) |
 | [`rules/`](rules/) | Engineering Rules — the source of truth (`R001`–`R010`) |
 | [`docs/`](docs/) | Formal specifications, e.g. the [Engineering Rule Specification](docs/ENGINEERING_RULE_SPECIFICATION.md) |
+| [`docs/ai-retrieval/`](docs/ai-retrieval/) | AI retrieval metadata layer — additive to `rules/`, never a replacement for it; see [ADR-0001](adr/ADR-0001-ai-retrieval-metadata-layer.md) |
+| [`knowledge-sources/`](knowledge-sources/) | [ERPNext/Frappe Knowledge Source Catalog](knowledge-sources/KNOWLEDGE_SOURCE_CATALOG.md) — every external source this project may draw on, evaluated and tiered. Sources only; no knowledge extracted yet. |
+| [`docs/knowledge-pipeline/`](docs/knowledge-pipeline/) | [Knowledge Acquisition Architecture](docs/knowledge-pipeline/KNOWLEDGE_ACQUISITION_ARCHITECTURE.md) — the full source→acquisition→extraction→graph→embeddings→retrieval pipeline design. Architecture only; not implemented. |
+| [`docs/crawler/`](docs/crawler/) | [Crawler Framework Architecture](docs/crawler/CRAWLER_ARCHITECTURE.md) — the modular, plugin-based crawling system that realizes the Knowledge Pipeline's Acquisition stage. Architecture only; not implemented. |
+| [`rules/metadata/`](rules/metadata/), [`rules/index/`](rules/index/) | Derived, machine-generated retrieval records and index for the rules above — non-authoritative |
 | [`templates/`](templates/) | Authoring templates and implementation scaffolds |
 | [`skills/`](skills/), [`agents/`](agents/), [`mcp/`](mcp/) | Phase 2, stages 2–4 — not yet populated (see [ROADMAP.md](ROADMAP.md)) |
 | [`adr/`](adr/) | Architecture Decision Records |

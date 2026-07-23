@@ -1,0 +1,80 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0009"
+rule_id: "R009"
+rule_er_id: "ER-0009"
+title: "YAGNI — No Speculative Infrastructure"
+source_file: "rules/R009-yagni-no-speculative-infrastructure.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:3b6ea06871dfaf5bb55aa2158620bfe47678c0a6d3319a2b188ceb2f07c992ea"
+risk_level: Medium
+priority: P2
+
+category: Architecture
+tags: [yagni, premature-optimization, speculative-infrastructure]
+keywords:
+  - caching layer
+  - generic strategy pattern
+  - unmeasured performance concern
+  - EXPLAIN query plan
+  - load test
+  - we might need it later
+
+intent: "Prevent permanent maintenance cost from infrastructure built for a problem that has not been measured or confirmed."
+problem_statement: "New infrastructure (a caching layer, a generic abstraction, a strategy layer) is being proposed to address a performance or flexibility concern."
+
+requirements:
+  - id: "R009-REQ-1"
+    modal: MUST_NOT
+    statement: "Do not build caching layers, generic scope/strategy abstractions, or any infrastructure to solve a performance or flexibility problem that has not been measured and proven to exist."
+    source_anchor: "#rule"
+  - id: "R009-REQ-2"
+    modal: MUST
+    statement: "Justify every piece of infrastructure by a real, observed bottleneck or a concrete, already-confirmed requirement, never by 'we might need it later.'"
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "Straightforward implementation shipped first; optimization infrastructure considered only after EXPLAIN or a load test against production-scale data confirms a real bottleneck."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "A summary-cache table built 'in case the query gets slow at scale' before any query has been measured, or a generic strategy-pattern layer for hypothetical future variants nobody requested."
+
+anti_patterns: []
+exceptions_present: true
+related_rules: ["R003", "R007"]
+
+dependencies: []
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Do not build caching, generic abstraction, or strategy-layer infrastructure to address a performance or flexibility concern until it has been measured and confirmed, not merely anticipated."
+  embedding_text: "R009: YAGNI — No Speculative Infrastructure. Do not build caching, generic abstraction, or strategy-layer infrastructure to address a performance or flexibility concern until it has been measured and confirmed, not merely anticipated. Category: Architecture. Tags: yagni, premature-optimization, speculative-infrastructure. Keywords: caching layer, generic strategy pattern, unmeasured performance concern, EXPLAIN query plan, load test, we might need it later."
+  trigger_intents:
+    - "proposing a caching layer"
+    - "designing a generic strategy or plugin abstraction"
+    - "adding infrastructure for a hypothetical future requirement"
+  applicability_signals:
+    - "new caching table or cache layer with no cited measurement"
+    - "generic strategy/factory abstraction with a single current implementation"
+    - "infrastructure justified only by 'might need it later' in proposal text"
+  negative_signals:
+    - "infrastructure proposed alongside a cited EXPLAIN plan or load-test result (the Good Pattern's justified case)"
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

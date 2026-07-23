@@ -1,0 +1,406 @@
+# docs/ai-retrieval/METADATA_SCHEMA.yaml
+# Canonical machine schema for a Rule Metadata Record (RM), a JSON Schema
+# (2020-12) serialized as YAML. Validate any rules/metadata/*.rm.yaml file
+# against this with any standard JSON Schema validator after a YAML->JSON
+# load (e.g. Python: `jsonschema.validate(yaml.safe_load(rm_file), yaml.safe_load(this_file))`).
+#
+# Authority: subordinate to docs/ai-retrieval/RULE_METADATA_SPECIFICATION.md,
+# which explains *why* each field exists and what it is allowed to contain.
+# This file only defines *shape*. See ADR-0001 for why this layer exists at
+# all and why it is additive to, never a replacement for, rules/*.md.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://erpnext-ai-architect.local/schema/rule-metadata-record-1.0.0.json"
+title: Rule Metadata Record
+description: >
+  A derived, non-authoritative sidecar to exactly one Engineering Rule.
+  Every field either points into the canonical rules/*.md file or adds
+  structure that file does not and should not contain. If any field here
+  ever disagrees with the canonical rule, the canonical rule wins and this
+  record is stale, not the reverse.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - rule_metadata_id
+  - rule_id
+  - rule_er_id
+  - title
+  - source_file
+  - version
+  - status
+  - sync_state
+  - risk_level
+  - priority
+  - category
+  - tags
+  - keywords
+  - intent
+  - problem_statement
+  - requirements
+  - good_examples
+  - bad_examples
+  - anti_patterns
+  - exceptions_present
+  - related_rules
+  - dependencies
+  - conflicts
+  - replacement
+  - references
+  - ai_retrieval
+  - workflow_ref
+  - revision_history
+
+properties:
+
+  schema_version:
+    type: string
+    const: "1.0.0"
+    description: Version of METADATA_SCHEMA.yaml this record validates against.
+
+  rule_metadata_id:
+    type: string
+    pattern: "^RM-[0-9]{4}$"
+    description: This record's own ID. Numerically aligned to rule_id (RM-0001 <-> R001).
+
+  rule_id:
+    type: string
+    pattern: "^R[0-9]{3}$"
+    description: The canonical rule filename prefix this record describes. Exactly one RM record per rule_id.
+
+  rule_er_id:
+    type: string
+    pattern: "^ER-[0-9]{4}$"
+    description: Cross-reference ID per ENGINEERING_META_MODEL.md's R0NN/ER-#### reconciliation.
+
+  title:
+    type: string
+    minLength: 1
+    description: Mirror of the canonical rule's H1 title. Must be regenerated whenever the source title changes.
+
+  source_file:
+    type: string
+    pattern: "^rules/R[0-9]{3}-.+\\.md$"
+    description: Relative path to the one canonical Rule this record is derived from.
+
+  version:
+    type: string
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    description: >
+      Semver of this RM record's own structure/content, independent of the
+      canonical rule's git history. MAJOR bumps on a category/requirements
+      re-derivation, MINOR on added tags/examples, PATCH on typo-level fixes.
+
+  status:
+    type: string
+    enum: [Draft, Review, Stable, Deprecated]
+    description: >
+      Mirrored 1:1 from the canonical rule's Status field (docs/ENGINEERING_RULE_SPECIFICATION.md
+      §3). Never set independently of the source rule.
+
+  sync_state:
+    type: string
+    enum: [generated, validated, synced, stale]
+    description: >
+      Lifecycle state of this record relative to its source file's current content
+      hash. See RULE_METADATA_LIFECYCLE.md. "stale" means the source rule changed
+      after this record was last generated.
+
+  source_content_hash:
+    type: string
+    pattern: "^sha256:[0-9a-f]{64}$"
+    description: >
+      SHA-256 of the canonical rule file's content at the time this record was
+      last generated/validated. The regeneration tool compares this against the
+      live file's hash to detect drift (see RULE_METADATA_LIFECYCLE.md). Optional
+      only until tooling exists to populate it; required once the generator ships.
+
+  risk_level:
+    type: string
+    enum: [Critical, High, Medium, Low]
+    description: >
+      Mirrored 1:1 from the canonical rule's Risk Level field. The sole source
+      of truth for `priority` below — never edited independently.
+
+  priority:
+    type: string
+    enum: [P0, P1, P2, P3]
+    description: >
+      Deterministic mapping from risk_level, for machine sorting only:
+      Critical=P0, High=P1, Medium=P2, Low=P3. Not an independent judgment field.
+
+  category:
+    type: string
+    enum:
+      - Architecture
+      - Customization
+      - Extension
+      - Security
+      - Performance
+      - Database
+      - Permissions
+      - API
+      - Workflow
+      - Reports
+      - Deployment
+      - Testing
+      - Printing
+      - Integrations
+      - UI/UX
+    description: >
+      Primary filing category — exactly one. Cross-cutting concerns belong in
+      `tags`, not by stretching category into a multi-value field.
+
+  tags:
+    type: array
+    items:
+      type: string
+      pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    uniqueItems: true
+    minItems: 1
+    description: Kebab-case facets for index grouping (e.g. "core-isolation", "fixtures").
+
+  keywords:
+    type: array
+    items:
+      type: string
+      minLength: 1
+    uniqueItems: true
+    description: >
+      Free-text lexical search terms/synonyms a human or agent might type
+      (e.g. "hand edit core file", "bench update breaks") — optimized for
+      full-text recall, not faceting. May contain phrases, unlike tags.
+
+  intent:
+    type: string
+    maxLength: 240
+    description: One machine-oriented sentence stating the good outcome this rule protects. Distinct wording from the canonical Rationale, not a restatement of it.
+
+  problem_statement:
+    type: string
+    maxLength: 240
+    description: >
+      One sentence, phrased as the situation/question an agent is actually in
+      when this rule becomes relevant (e.g. "Adding a field or behavior to a
+      DocType that ships with a vendor app"). Drives intent-matching retrieval.
+
+  requirements:
+    type: array
+    minItems: 1
+    description: >
+      RFC 2119 decomposition of the canonical Rule statement into discrete,
+      independently checkable clauses. Extracted from source_file's "## Rule"
+      section — never invented, never adding a constraint the prose doesn't
+      already state.
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, modal, statement]
+      properties:
+        id:
+          type: string
+          pattern: "^R[0-9]{3}-REQ-[0-9]+$"
+        modal:
+          type: string
+          enum: [MUST, MUST_NOT, SHOULD, SHOULD_NOT, MAY]
+        statement:
+          type: string
+          minLength: 1
+        source_anchor:
+          type: string
+          description: "Markdown anchor into source_file, e.g. '#rule'."
+
+  good_examples:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [source_anchor, description]
+      properties:
+        source_anchor:
+          type: string
+          description: "Anchor into source_file's Good Pattern block, e.g. '#good-pattern'."
+        description:
+          type: string
+          maxLength: 260
+          description: One-line machine tag of what construct the example demonstrates.
+
+  bad_examples:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [source_anchor, description]
+      properties:
+        source_anchor:
+          type: string
+          description: "Anchor into source_file's Bad Pattern block, e.g. '#bad-pattern'."
+        description:
+          type: string
+          maxLength: 260
+
+  anti_patterns:
+    type: array
+    items:
+      type: string
+      description: "AP-#### ID once anti-patterns/ is populated, or a bare description if none exists yet."
+
+  exceptions_present:
+    type: boolean
+    description: Mirrors whether source_file's "## Exceptions" section states anything beyond "None".
+
+  related_rules:
+    type: array
+    items:
+      type: string
+      pattern: "^R[0-9]{3}$"
+    description: Undirected. Mirrors source_file's "## Related Rules" section.
+
+  dependencies:
+    type: array
+    description: >
+      Directed edges: rules that must be loaded/understood alongside or before
+      this one for correct reasoning. Used to build reasoning chains (see
+      RULE_INDEX_SPEC.md). A subset of related_rules that is specifically
+      "requires understanding," not merely "related to."
+    items:
+      type: object
+      additionalProperties: false
+      required: [rule_id, reason]
+      properties:
+        rule_id:
+          type: string
+          pattern: "^R[0-9]{3}$"
+        reason:
+          type: string
+          maxLength: 320
+
+  conflicts:
+    type: array
+    description: >
+      Documented cases where this rule's Good Pattern and another rule's Good
+      Pattern cannot both be fully satisfied for the same proposal. Empty
+      array is a true statement ("no known conflicts"), not a placeholder.
+    items:
+      type: object
+      additionalProperties: false
+      required: [rule_id, scenario, resolution]
+      properties:
+        rule_id:
+          type: string
+          pattern: "^R[0-9]{3}$"
+        scenario:
+          type: string
+          maxLength: 400
+          description: The concrete situation where both rules apply and pull in different directions.
+        resolution:
+          type: string
+          maxLength: 550
+          description: >
+            Documented precedence for this specific scenario. If none has been
+            decided yet, must literally state "Undecided — surface to a human
+            per AGENTS.md, do not resolve silently," never a guessed answer.
+
+  replacement:
+    type: object
+    additionalProperties: false
+    required: [supersedes, superseded_by]
+    properties:
+      supersedes:
+        type: array
+        items:
+          type: string
+          pattern: "^R[0-9]{3}$"
+      superseded_by:
+        type: ["string", "null"]
+        pattern: "^R[0-9]{3}$"
+    description: Fast-path index of supersession. A full DEP artifact, when one exists, remains authoritative.
+
+  references:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [title, url]
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+    description: >
+      External documentation links relevant for retrieval augmentation. An
+      empty array is correct and expected for rules whose Evidence.Origin is
+      "Legacy Production Experience" with no external citation — never invent one.
+
+  ai_retrieval:
+    type: object
+    additionalProperties: false
+    required: [semantic_summary, embedding_text, trigger_intents, applicability_signals, negative_signals, confidence_weight]
+    properties:
+      semantic_summary:
+        type: string
+        maxLength: 400
+        description: 1-2 sentence machine-oriented restatement optimized for embedding/semantic search recall of paraphrased queries.
+      embedding_text:
+        type: string
+        description: >
+          Deterministic concatenation fed to an embedding model, composed per
+          RULE_INDEX_SPEC.md's fixed template (title + semantic_summary +
+          category + tags + keywords). Regenerated whenever any input field changes.
+      trigger_intents:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        description: Canonical task/intent phrasings that should route to this rule.
+      applicability_signals:
+        type: array
+        items:
+          type: string
+        description: >
+          Deterministic pattern-match hints (file paths touched, DocType
+          operations, API calls) a cheap pre-check can match against a
+          proposal without semantic search.
+      negative_signals:
+        type: array
+        items:
+          type: string
+        description: Patterns that resemble a match but should NOT trigger this rule, to reduce false positives.
+      confidence_weight:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+        description: Ranking weight multiplier. Default 1.0; curators may adjust independent of textual similarity.
+
+  workflow_ref:
+    type: ["string", "null"]
+    pattern: "^(DT|SK)-[0-9]{4}$"
+    description: >
+      Forward-looking pointer to a Decision Tree or Skill that operationalizes
+      this rule, once ROADMAP.md Stage 2+ produces one. Null is the correct,
+      non-placeholder value while no such artifact exists yet.
+
+  revision_history:
+    type: array
+    minItems: 1
+    description: >
+      History of this RM record itself, not of the canonical rule (whose
+      history is git log on source_file).
+    items:
+      type: object
+      additionalProperties: false
+      required: [version, date, change, reason]
+      properties:
+        version:
+          type: string
+          pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        date:
+          type: string
+          format: date
+        change:
+          type: string
+          maxLength: 200
+        reason:
+          type: string
+          maxLength: 320

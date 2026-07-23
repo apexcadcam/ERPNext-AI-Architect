@@ -1,0 +1,82 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0010"
+rule_id: "R010"
+rule_er_id: "ER-0010"
+title: "One DocType, One Responsibility"
+source_file: "rules/R010-one-doctype-one-responsibility.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:b35e8190bb19a2fad42c6e72760f56a5f28fd196ee4fa79f08e8092cd575b34d"
+risk_level: High
+priority: P1
+
+category: Architecture
+tags: [data-model, single-responsibility, doctype-design]
+keywords:
+  - overloaded doctype
+  - one-sentence responsibility
+  - Lead Customer Opportunity
+  - bolted-on fields
+  - unrelated responsibilities
+  - permission modeling breakdown
+
+intent: "Keep every custom DocType's responsibility answerable in one sentence so it stays safe to reason about and safe to grant permissions on."
+problem_statement: "A new custom DocType is being designed, or an existing one is being extended with new fields or responsibilities."
+
+requirements:
+  - id: "R010-REQ-1"
+    modal: MUST
+    statement: "Every custom DocType must represent exactly one business concept with a boundary answerable in one sentence."
+    source_anchor: "#rule"
+  - id: "R010-REQ-2"
+    modal: MUST_NOT
+    statement: "A DocType must never absorb multiple unrelated responsibilities (e.g. identity + follow-up tracking + financial history + ad-hoc contact storage) just because it was convenient to bolt one more field onto an existing form."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "Separate Lead / Customer / Contact / Opportunity DocTypes with a one-directional conversion flow, each answerable by its own one-sentence responsibility statement."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "A single Lead DocType carrying an unbounded ad-hoc contact child table, a duplicate search-index field, post-conversion financial fields, and bidirectional sync logic with Customer."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R002"]
+
+dependencies: []
+
+conflicts:
+  - rule_id: "R002"
+    scenario: "The only close native fit for a requirement is a DocType that would need fields unrelated to its own one-sentence responsibility bolted on to satisfy R002's 'use it even if imperfect' mandate."
+    resolution: "No true conflict once read precisely: R002's Good Pattern only sanctions extending a native structure with a compatible, closely-related attribute (its own example: adding a missing 'primary' flag to an existing child table) — it does not sanction absorbing an unrelated responsibility. When satisfying R002 would require violating this rule's one-sentence-responsibility test, the extension no longer qualifies as R002's Good Pattern, and a new, properly-scoped DocType is required instead."
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Every custom DocType must represent exactly one clearly-bounded business concept, checkable in one sentence, and must never accumulate unrelated responsibilities over time."
+  embedding_text: "R010: One DocType, One Responsibility. Every custom DocType must represent exactly one clearly-bounded business concept, checkable in one sentence, and must never accumulate unrelated responsibilities over time. Category: Architecture. Tags: data-model, single-responsibility, doctype-design. Keywords: overloaded doctype, one-sentence responsibility, Lead Customer Opportunity, bolted-on fields, unrelated responsibilities, permission modeling breakdown."
+  trigger_intents:
+    - "designing a new custom DocType"
+    - "adding fields to an existing DocType"
+    - "deciding whether a new concept belongs on an existing record"
+  applicability_signals:
+    - "new field added to a DocType that doesn't fit its existing one-sentence description"
+    - "DocType accumulating fields spanning multiple unrelated concerns (identity, financials, ad-hoc notes)"
+    - "bidirectional sync logic between two DocTypes representing overlapping data"
+  negative_signals: []
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

@@ -1,0 +1,84 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0006"
+rule_id: "R006"
+rule_er_id: "ER-0006"
+title: "Full Reproducibility (Fixtures + Patches, No Manual Steps)"
+source_file: "rules/R006-full-reproducibility-fixtures-and-patches.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:4663e7eeb62459c3db84c5dd70a738ef6419257682933786cb7478c6f4078ab6"
+risk_level: Critical
+priority: P0
+
+category: Deployment
+tags: [reproducibility, fixtures, patches, git]
+keywords:
+  - bench export-fixtures
+  - patches.txt
+  - db_update
+  - bench console one-off script
+  - clean database rebuild
+  - gunicorn master reload
+  - SIGHUP
+
+intent: "Make an app's entire state reconstructable from git alone, with no undocumented manual step required."
+problem_statement: "A UI-driven configuration change or a change touching existing data is being made, or an app/process is being deployed."
+
+requirements:
+  - id: "R006-REQ-1"
+    modal: MUST
+    statement: "Export every Custom Field/Property Setter/Workflow/Workspace created through the UI as a fixture before commit."
+    source_anchor: "#rule"
+  - id: "R006-REQ-2"
+    modal: MUST
+    statement: "Ship every change that touches existing data as an idempotent Patch (patches.txt, using db_update()), never as a one-off bench console script or a manual DB edit."
+    source_anchor: "#rule"
+  - id: "R006-REQ-3"
+    modal: MUST
+    statement: "Ensure the system behaves identically after a clean bench get-app + bench install-app + bench migrate from an empty database as it did before."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "patches.txt entry plus an idempotent execute() patch using db_update(), with every UI-created fixture exported in the same commit."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "A Custom Field added through the desk UI with no bench export-fixtures run, live data corrected via a throwaway bench console snippet, and a gunicorn master reloaded with SIGHUP instead of a full restart after new app code is installed."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R004", "R005"]
+
+dependencies: []
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "An app's entire state — UI configuration and data-affecting changes alike — must be reconstructable from git alone, via exported fixtures and idempotent patches, never manual UI steps or console scripts."
+  embedding_text: "R006: Full Reproducibility (Fixtures + Patches, No Manual Steps). An app's entire state — UI configuration and data-affecting changes alike — must be reconstructable from git alone, via exported fixtures and idempotent patches, never manual UI steps or console scripts. Category: Deployment. Tags: reproducibility, fixtures, patches, git. Keywords: bench export-fixtures, patches.txt, db_update, bench console one-off script, clean database rebuild, gunicorn master reload, SIGHUP."
+  trigger_intents:
+    - "configuring something through the Desk UI"
+    - "backfilling or correcting live data"
+    - "deploying a new app or reloading app code"
+  applicability_signals:
+    - "UI-created Custom Field/Property Setter/Workflow with no matching fixture export"
+    - "data correction performed via bench console instead of a patch"
+    - "process reload using SIGHUP after installing new app code"
+  negative_signals: []
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

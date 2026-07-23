@@ -1,0 +1,88 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0001"
+rule_id: "R001"
+rule_er_id: "ER-0001"
+title: "Core Isolation & Non-Invasive Extension"
+source_file: "rules/R001-core-isolation-non-invasive-extension.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:1aa0b045ce7b0e51cfc399c291a3125d40cc38d48b1d43d7298f1d130263a10b"
+risk_level: Critical
+priority: P0
+
+category: Architecture
+tags: [core-isolation, upgrade-safety, extension-points, hooks]
+keywords:
+  - hand-edited core file
+  - vendor app modification
+  - bench update overwrite
+  - apps/frappe
+  - apps/erpnext
+  - doc_events
+  - override_doctype_class
+  - override_whitelisted_methods
+  - Custom Field
+  - Property Setter
+
+intent: "Keep every customization discoverable in a git diff of one custom app, and survivable across any future bench update."
+problem_statement: "A change is about to be made to a DocType, field, or behavior that ships inside frappe, erpnext, or any other vendor app."
+
+requirements:
+  - id: "R001-REQ-1"
+    modal: MUST_NOT
+    statement: "Never modify a file inside apps/frappe, apps/erpnext, or any other vendor app."
+    source_anchor: "#rule"
+  - id: "R001-REQ-2"
+    modal: MUST
+    statement: "Apply every customization (field, validation, UI change, business rule) inside a custom app, through an official extension point: Custom Field, Property Setter, Client Script, Server Script, hooks.py (doc_events, override_doctype_class, override_whitelisted_methods), or a genuinely new Custom DocType."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "hooks.py doc_events wiring a validate handler into a custom app instead of editing the vendor doctype file."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "Hand-edited apps/erpnext/erpnext/crm/doctype/contact/contact.py adding a frappe.throw() directly in core."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R002", "R003"]
+
+dependencies: []
+
+conflicts:
+  - rule_id: "R002"
+    scenario: "The only close native fit for a requirement is a vendor-shipped DocType whose behavior can only be adjusted by touching its shipped Python file directly, tempting a core edit in the name of 'native-first.'"
+    resolution: "R001 always wins. R002's discovery mandate never overrides R001 — the correct move is the same file's own Good Pattern: reach the vendor DocType only through Custom Field, Property Setter, or hooks.py, never a direct edit, even when no non-invasive path looks like a perfect fit."
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Every ERPNext customization must be reachable through official extension points inside a custom app, never by editing a file that ships with Frappe, ERPNext, or any other vendor app."
+  embedding_text: "R001: Core Isolation & Non-Invasive Extension. Every ERPNext customization must be reachable through official extension points inside a custom app, never by editing a file that ships with Frappe, ERPNext, or any other vendor app. Category: Architecture. Tags: core-isolation, upgrade-safety, extension-points, hooks. Keywords: hand-edited core file, vendor app modification, bench update overwrite, apps/frappe, apps/erpnext, doc_events, override_doctype_class, override_whitelisted_methods, Custom Field, Property Setter."
+  trigger_intents:
+    - "editing a file inside apps/frappe or apps/erpnext"
+    - "patching vendor app source to fix a bug or add a field"
+    - "changing standard DocType behavior"
+  applicability_signals:
+    - "file path under apps/frappe/"
+    - "file path under apps/erpnext/"
+    - "file path under any installed vendor app directory"
+    - "diff touches a *.py or *.json file not owned by a custom app"
+  negative_signals:
+    - "editing a file under a custom app's own directory (this is the Good Pattern, not a violation)"
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

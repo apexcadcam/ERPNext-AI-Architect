@@ -1,0 +1,83 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0005"
+rule_id: "R005"
+rule_er_id: "ER-0005"
+title: "Idempotent, Upgrade-Safe Deployment"
+source_file: "rules/R005-idempotent-upgrade-safe-deployment.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:c747bf79d9ee36164f52b9998d4972819018a6ed1f2a2855df0061c9ee39acff"
+risk_level: High
+priority: P1
+
+category: Deployment
+tags: [idempotency, installation, migration, permissions]
+keywords:
+  - after_install
+  - required_apps
+  - is_standard report
+  - silent install failure
+  - partial provisioning failure
+  - role assignment overwritten
+
+intent: "Make installation and migration survive partial failure and repeated runs without corrupting state or silently reverting admin changes."
+problem_statement: "An after_install or migration hook, a cross-app dependency, or a shipped Report/permission set is being written for a custom app."
+
+requirements:
+  - id: "R005-REQ-1"
+    modal: MUST
+    statement: "Wrap each provisioning step inside after_install (and any migration hook) in its own try/except, never one monolithic uncaught block."
+    source_anchor: "#rule"
+  - id: "R005-REQ-2"
+    modal: MUST
+    statement: "Explicitly declare required_apps in hooks.py for any cross-app dependency."
+    source_anchor: "#rule"
+  - id: "R005-REQ-3"
+    modal: MUST
+    statement: "Ship Reports and permission sets as UI-managed: is_standard 'No' and an empty roles list, imported once via after_install, with role assignment left to the site administrator."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "after_install looping over provisioning steps with per-step try/except and frappe.log_error, plus required_apps declared in hooks.py."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "after_install running create_custom_fields/import_reports/setup_workflows with no per-step error isolation, and a report JSON hard-coding is_standard 'Yes' with baked-in roles."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R004", "R006"]
+
+dependencies: []
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Installation and migration hooks must isolate failures per step, declare cross-app dependencies explicitly, and leave Report/permission role assignment to the UI rather than hard-coding it."
+  embedding_text: "R005: Idempotent, Upgrade-Safe Deployment. Installation and migration hooks must isolate failures per step, declare cross-app dependencies explicitly, and leave Report/permission role assignment to the UI rather than hard-coding it. Category: Deployment. Tags: idempotency, installation, migration, permissions. Keywords: after_install, required_apps, is_standard report, silent install failure, partial provisioning failure, role assignment overwritten."
+  trigger_intents:
+    - "writing an after_install hook"
+    - "declaring a cross-app dependency"
+    - "shipping a Report or permission set with a custom app"
+  applicability_signals:
+    - "after_install function with no per-step try/except"
+    - "hooks.py with a cross-app import and no required_apps entry"
+    - "report JSON with is_standard: 'Yes' and a non-empty roles list"
+  negative_signals: []
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

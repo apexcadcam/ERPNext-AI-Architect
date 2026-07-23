@@ -1,0 +1,85 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0007"
+rule_id: "R007"
+rule_er_id: "ER-0007"
+title: "Thin Hooks, Centralized Service Layer"
+source_file: "rules/R007-thin-hooks-centralized-service-layer.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:958f00b24635d7efc1d2257f54f2af0a14c20fa28fd3571941c3b4a8ae1e3ec7"
+risk_level: High
+priority: P1
+
+category: Architecture
+tags: [hooks, service-layer, testability, transactions]
+keywords:
+  - doc_events handler
+  - fat hook
+  - frappe.db.commit inside hook
+  - unit testable business logic
+  - engine module
+  - services module
+
+intent: "Keep business logic unit-testable and transactionally safe by keeping hooks to thin wiring only."
+problem_statement: "A doc_events hook (or other hook target) is being written in a custom app."
+
+requirements:
+  - id: "R007-REQ-1"
+    modal: MUST
+    statement: "A hook function must be a 3-4 line call into a dedicated, testable service/engine module, never the place where calculation, validation, or side-effect logic lives."
+    source_anchor: "#rule"
+  - id: "R007-REQ-2"
+    modal: MUST
+    statement: "Real business logic must live in plain functions/classes unit-testable without triggering a document event."
+    source_anchor: "#rule"
+  - id: "R007-REQ-3"
+    modal: MUST_NOT
+    statement: "A hook must never manage its own database transaction (frappe.db.commit())."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "hooks.py doc_events wiring on_submit to a one-line call into a CommissionEngine class holding the real, independently unit-testable logic."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "on_submit handler containing the full calculation loop plus a manual frappe.db.commit() inside the hook itself."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R003", "R009"]
+
+dependencies:
+  - rule_id: "R003"
+    reason: "R007 only governs how to write code once R003's configuration-first check has already justified writing custom code at all — reading R007 without R003 risks treating 'keep the hook thin' as license to skip the low-code check entirely."
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "hooks.py and doc_events handlers must stay thin wiring into a separately testable service/engine module, and must never manage their own database transaction."
+  embedding_text: "R007: Thin Hooks, Centralized Service Layer. hooks.py and doc_events handlers must stay thin wiring into a separately testable service/engine module, and must never manage their own database transaction. Category: Architecture. Tags: hooks, service-layer, testability, transactions. Keywords: doc_events handler, fat hook, frappe.db.commit inside hook, unit testable business logic, engine module, services module."
+  trigger_intents:
+    - "writing a doc_events hook handler"
+    - "adding business logic triggered by a document event"
+    - "deciding where calculation/validation logic should live"
+  applicability_signals:
+    - "doc_events handler function longer than a few lines"
+    - "frappe.db.commit() call inside a hook function"
+    - "calculation or validation logic written directly inside a hooks.py-referenced function"
+  negative_signals: []
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

@@ -1,0 +1,79 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0008"
+rule_id: "R008"
+rule_er_id: "ER-0008"
+title: "Native Permission System Over Custom Permission Code"
+source_file: "rules/R008-native-permission-system-over-custom-checks.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:83642521e6895034e5b7546e3275936158eb471986880b015c2d180f4c7ed03c"
+risk_level: Medium
+priority: P2
+
+category: Permissions
+tags: [permissions, row-level-security, role-permission-manager]
+keywords:
+  - has_permission override
+  - permission_query_conditions
+  - User Permission doctype
+  - Role Permission Manager
+  - hand-written access check
+  - row-level visibility
+
+intent: "Keep access control visible in Frappe's own permission UI instead of buried in bespoke Python only a developer can audit."
+problem_statement: "Access control — including row-level ('see only your own records') visibility — is being implemented for a DocType in a custom app."
+
+requirements:
+  - id: "R008-REQ-1"
+    modal: MUST
+    statement: "Build access control, including row-level security, with Frappe's Role Permission Manager and User Permission doctype, not hand-written checks scattered through validate/has_permission hooks."
+    source_anchor: "#rule"
+  - id: "R008-REQ-2"
+    modal: MUST_NOT
+    statement: "Hard-code role assignment into application code; roles are assigned and adjusted through the UI/fixtures."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "A record linked to a user, restricted via a User Permission record, applied automatically everywhere by Frappe's built-in permission engine."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "A bespoke has_permission() function comparing doc.commission_agent to the logged-in user's linked agent record."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R001", "R002"]
+
+dependencies: []
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Access control, including row-level visibility, must be built with Frappe's Role Permission Manager and User Permission doctype, never hand-written has_permission or permission_query_conditions logic."
+  embedding_text: "R008: Native Permission System Over Custom Permission Code. Access control, including row-level visibility, must be built with Frappe's Role Permission Manager and User Permission doctype, never hand-written has_permission or permission_query_conditions logic. Category: Permissions. Tags: permissions, row-level-security, role-permission-manager. Keywords: has_permission override, permission_query_conditions, User Permission doctype, Role Permission Manager, hand-written access check, row-level visibility."
+  trigger_intents:
+    - "restricting which users can see or edit a record"
+    - "implementing row-level or 'own records only' visibility"
+    - "writing a has_permission or permission_query_conditions function"
+  applicability_signals:
+    - "custom has_permission function comparing doc fields to frappe.session.user"
+    - "custom permission_query_conditions implementing row filtering in Python"
+    - "role hard-coded into a fixture or script instead of assigned via UI"
+  negative_signals: []
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

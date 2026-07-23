@@ -1,0 +1,83 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0003"
+rule_id: "R003"
+rule_er_id: "ER-0003"
+title: "Low-Code Maximalism (Configuration Over Code)"
+source_file: "rules/R003-low-code-configuration-over-code.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:81df390acbee44233fef6e890b13813e9f020c716dca8bc017c869f47957aecc"
+risk_level: Medium
+priority: P2
+
+category: Customization
+tags: [low-code, configuration, workflow, client-script]
+keywords:
+  - custom Python endpoint
+  - whitelisted method
+  - Workflow doctype
+  - Property Setter
+  - Client Script
+  - Server Script
+  - Report Builder
+  - Assignment Rule
+  - reinventing native tooling
+
+intent: "Minimize the amount of bespoke code owned for the app's lifetime by exhausting native configuration primitives first."
+problem_statement: "A new feature or behavior is being designed and custom Python/JS logic is being considered before configuration has been ruled out."
+
+requirements:
+  - id: "R003-REQ-1"
+    modal: MUST
+    statement: "Try and rule out Frappe's no-code/low-code primitives (Property Setter, Custom Field, Client Script, Server Script, Workflow, Print Format Builder, Report Builder, Notification, Assignment Rule) before writing a custom Python module, whitelisted API, or custom page."
+    source_anchor: "#rule"
+  - id: "R003-REQ-2"
+    modal: MUST
+    statement: "Treat custom code as the last resort, not the default starting point."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "Approval flow modeled as a Workflow with states/transitions/role-based actions, plus Client Script depends_on/fetch_from/set_query for field behavior."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "Custom @frappe.whitelist() endpoint plus a hand-rolled JS page reimplementing what the Workflow doctype already does."
+
+anti_patterns: []
+exceptions_present: true
+related_rules: ["R001", "R007"]
+
+dependencies: []
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Solve problems with Frappe's native configuration primitives before writing custom code; custom Python/JS is justified only once configuration has genuinely been ruled out."
+  embedding_text: "R003: Low-Code Maximalism (Configuration Over Code). Solve problems with Frappe's native configuration primitives before writing custom code; custom Python/JS is justified only once configuration has genuinely been ruled out. Category: Customization. Tags: low-code, configuration, workflow, client-script. Keywords: custom Python endpoint, whitelisted method, Workflow doctype, Property Setter, Client Script, Server Script, Report Builder, Assignment Rule, reinventing native tooling."
+  trigger_intents:
+    - "building an approval or state-transition flow"
+    - "writing a custom whitelisted API endpoint"
+    - "adding a custom page or form controller"
+  applicability_signals:
+    - "proposal includes a new @frappe.whitelist() function"
+    - "proposal includes a new custom Desk page"
+    - "proposal reimplements state-transition logic instead of using Workflow"
+  negative_signals:
+    - "custom code for a non-trivial calculation or third-party integration already justified as an exception"
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

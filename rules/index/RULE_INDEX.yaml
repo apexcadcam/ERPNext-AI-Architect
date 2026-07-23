@@ -1,0 +1,201 @@
+# Generated build artifact. Never hand-edit — regenerate from rules/metadata/*.rm.yaml
+# per docs/ai-retrieval/RULE_INDEX_SPEC.md §6. Manually compiled this pass; no generator
+# script exists yet (see RULE_INDEX_SPEC.md §6, "Regeneration").
+schema_version: "1.0.0"
+generated_at: "2026-07-23T00:00:00Z"
+generated_from:
+  rule_count: 10
+  metadata_records:
+    - "RM-0001"
+    - "RM-0002"
+    - "RM-0003"
+    - "RM-0004"
+    - "RM-0005"
+    - "RM-0006"
+    - "RM-0007"
+    - "RM-0008"
+    - "RM-0009"
+    - "RM-0010"
+
+by_category:
+  Architecture: ["R001", "R002", "R007", "R009", "R010"]
+  Customization: ["R003"]
+  Extension: []
+  Security: []
+  Performance: []
+  Database: []
+  Permissions: ["R008"]
+  API: []
+  Workflow: []
+  Reports: []
+  Deployment: ["R004", "R005", "R006"]
+  Testing: []
+  Printing: []
+  Integrations: []
+  UI/UX: []
+
+by_tag:
+  core-isolation: ["R001"]
+  upgrade-safety: ["R001"]
+  extension-points: ["R001"]
+  hooks: ["R001", "R007"]
+  discovery: ["R002"]
+  data-model: ["R002", "R010"]
+  native-first: ["R002"]
+  low-code: ["R003"]
+  configuration: ["R003"]
+  workflow: ["R003"]
+  client-script: ["R003"]
+  fixtures: ["R004", "R006"]
+  metadata: ["R004"]
+  database: ["R004"]
+  module-scoping: ["R004"]
+  idempotency: ["R005"]
+  installation: ["R005"]
+  migration: ["R005"]
+  permissions: ["R005", "R008"]
+  reproducibility: ["R006"]
+  patches: ["R006"]
+  git: ["R006"]
+  service-layer: ["R007"]
+  testability: ["R007"]
+  transactions: ["R007"]
+  row-level-security: ["R008"]
+  role-permission-manager: ["R008"]
+  yagni: ["R009"]
+  premature-optimization: ["R009"]
+  speculative-infrastructure: ["R009"]
+  single-responsibility: ["R010"]
+  doctype-design: ["R010"]
+
+dependency_graph:
+  R004: ["R006"]
+  R007: ["R003"]
+
+conflict_graph:
+  - rules: ["R001", "R002"]
+    resolved: true
+  - rules: ["R002", "R010"]
+    resolved: true
+
+entries:
+  - rule_id: "R001"
+    status: Stable
+    priority: P0
+    category: Architecture
+    tags: ["core-isolation", "upgrade-safety", "extension-points", "hooks"]
+    embedding_text: "R001: Core Isolation & Non-Invasive Extension. Every ERPNext customization must be reachable through official extension points inside a custom app, never by editing a file that ships with Frappe, ERPNext, or any other vendor app. Category: Architecture. Tags: core-isolation, upgrade-safety, extension-points, hooks. Keywords: hand-edited core file, vendor app modification, bench update overwrite, apps/frappe, apps/erpnext, doc_events, override_doctype_class, override_whitelisted_methods, Custom Field, Property Setter."
+    applicability_signals:
+      - "file path under apps/frappe/"
+      - "file path under apps/erpnext/"
+      - "file path under any installed vendor app directory"
+      - "diff touches a *.py or *.json file not owned by a custom app"
+    sync_state: synced
+
+  - rule_id: "R002"
+    status: Stable
+    priority: P1
+    category: Architecture
+    tags: ["discovery", "data-model", "native-first"]
+    embedding_text: "R002: Native-First Discovery (Research Before You Build). Before designing any new custom field, child table, or DocType, prove no existing native ERPNext structure already covers it, and prefer an imperfect native fit over a parallel custom structure. Category: Architecture. Tags: discovery, data-model, native-first. Keywords: duplicate data model, reinventing an existing doctype, Address & Contact, child table, standard reports, before building custom, does ERPNext already have this."
+    applicability_signals:
+      - "proposal introduces a new DocType"
+      - "proposal introduces a new child table"
+      - "proposal adds multiple similarly-named custom fields (e.g. numbered variants)"
+    sync_state: synced
+
+  - rule_id: "R003"
+    status: Stable
+    priority: P2
+    category: Customization
+    tags: ["low-code", "configuration", "workflow", "client-script"]
+    embedding_text: "R003: Low-Code Maximalism (Configuration Over Code). Solve problems with Frappe's native configuration primitives before writing custom code; custom Python/JS is justified only once configuration has genuinely been ruled out. Category: Customization. Tags: low-code, configuration, workflow, client-script. Keywords: custom Python endpoint, whitelisted method, Workflow doctype, Property Setter, Client Script, Server Script, Report Builder, Assignment Rule, reinventing native tooling."
+    applicability_signals:
+      - "proposal includes a new @frappe.whitelist() function"
+      - "proposal includes a new custom Desk page"
+      - "proposal reimplements state-transition logic instead of using Workflow"
+    sync_state: synced
+
+  - rule_id: "R004"
+    status: Stable
+    priority: P0
+    category: Deployment
+    tags: ["fixtures", "metadata", "database", "module-scoping"]
+    embedding_text: "R004: Fixture & Metadata Integrity. Custom metadata (fields, Property Setters) must be module-tagged, scoped to the owning app, and removed by editing fixture files, never by a bare database delete or an unscoped fixture export. Category: Deployment. Tags: fixtures, metadata, database, module-scoping. Keywords: orphaned custom field, module tag, CannotCreateStandardDoctypeError, Property Setter fixture, fixture resurrection, bench migrate, create_custom_fields."
+    applicability_signals:
+      - "create_custom_fields() call without a 'module' key"
+      - "fixtures list in hooks.py containing {'dt': 'DocType', ...}"
+      - "field or setter removed via direct database delete instead of fixture edit"
+    sync_state: synced
+
+  - rule_id: "R005"
+    status: Stable
+    priority: P1
+    category: Deployment
+    tags: ["idempotency", "installation", "migration", "permissions"]
+    embedding_text: "R005: Idempotent, Upgrade-Safe Deployment. Installation and migration hooks must isolate failures per step, declare cross-app dependencies explicitly, and leave Report/permission role assignment to the UI rather than hard-coding it. Category: Deployment. Tags: idempotency, installation, migration, permissions. Keywords: after_install, required_apps, is_standard report, silent install failure, partial provisioning failure, role assignment overwritten."
+    applicability_signals:
+      - "after_install function with no per-step try/except"
+      - "hooks.py with a cross-app import and no required_apps entry"
+      - "report JSON with is_standard: 'Yes' and a non-empty roles list"
+    sync_state: synced
+
+  - rule_id: "R006"
+    status: Stable
+    priority: P0
+    category: Deployment
+    tags: ["reproducibility", "fixtures", "patches", "git"]
+    embedding_text: "R006: Full Reproducibility (Fixtures + Patches, No Manual Steps). An app's entire state — UI configuration and data-affecting changes alike — must be reconstructable from git alone, via exported fixtures and idempotent patches, never manual UI steps or console scripts. Category: Deployment. Tags: reproducibility, fixtures, patches, git. Keywords: bench export-fixtures, patches.txt, db_update, bench console one-off script, clean database rebuild, gunicorn master reload, SIGHUP."
+    applicability_signals:
+      - "UI-created Custom Field/Property Setter/Workflow with no matching fixture export"
+      - "data correction performed via bench console instead of a patch"
+      - "process reload using SIGHUP after installing new app code"
+    sync_state: synced
+
+  - rule_id: "R007"
+    status: Stable
+    priority: P1
+    category: Architecture
+    tags: ["hooks", "service-layer", "testability", "transactions"]
+    embedding_text: "R007: Thin Hooks, Centralized Service Layer. hooks.py and doc_events handlers must stay thin wiring into a separately testable service/engine module, and must never manage their own database transaction. Category: Architecture. Tags: hooks, service-layer, testability, transactions. Keywords: doc_events handler, fat hook, frappe.db.commit inside hook, unit testable business logic, engine module, services module."
+    applicability_signals:
+      - "doc_events handler function longer than a few lines"
+      - "frappe.db.commit() call inside a hook function"
+      - "calculation or validation logic written directly inside a hooks.py-referenced function"
+    sync_state: synced
+
+  - rule_id: "R008"
+    status: Stable
+    priority: P2
+    category: Permissions
+    tags: ["permissions", "row-level-security", "role-permission-manager"]
+    embedding_text: "R008: Native Permission System Over Custom Permission Code. Access control, including row-level visibility, must be built with Frappe's Role Permission Manager and User Permission doctype, never hand-written has_permission or permission_query_conditions logic. Category: Permissions. Tags: permissions, row-level-security, role-permission-manager. Keywords: has_permission override, permission_query_conditions, User Permission doctype, Role Permission Manager, hand-written access check, row-level visibility."
+    applicability_signals:
+      - "custom has_permission function comparing doc fields to frappe.session.user"
+      - "custom permission_query_conditions implementing row filtering in Python"
+      - "role hard-coded into a fixture or script instead of assigned via UI"
+    sync_state: synced
+
+  - rule_id: "R009"
+    status: Stable
+    priority: P2
+    category: Architecture
+    tags: ["yagni", "premature-optimization", "speculative-infrastructure"]
+    embedding_text: "R009: YAGNI — No Speculative Infrastructure. Do not build caching, generic abstraction, or strategy-layer infrastructure to address a performance or flexibility concern until it has been measured and confirmed, not merely anticipated. Category: Architecture. Tags: yagni, premature-optimization, speculative-infrastructure. Keywords: caching layer, generic strategy pattern, unmeasured performance concern, EXPLAIN query plan, load test, we might need it later."
+    applicability_signals:
+      - "new caching table or cache layer with no cited measurement"
+      - "generic strategy/factory abstraction with a single current implementation"
+      - "infrastructure justified only by 'might need it later' in proposal text"
+    sync_state: synced
+
+  - rule_id: "R010"
+    status: Stable
+    priority: P1
+    category: Architecture
+    tags: ["data-model", "single-responsibility", "doctype-design"]
+    embedding_text: "R010: One DocType, One Responsibility. Every custom DocType must represent exactly one clearly-bounded business concept, checkable in one sentence, and must never accumulate unrelated responsibilities over time. Category: Architecture. Tags: data-model, single-responsibility, doctype-design. Keywords: overloaded doctype, one-sentence responsibility, Lead Customer Opportunity, bolted-on fields, unrelated responsibilities, permission modeling breakdown."
+    applicability_signals:
+      - "new field added to a DocType that doesn't fit its existing one-sentence description"
+      - "DocType accumulating fields spanning multiple unrelated concerns (identity, financials, ad-hoc notes)"
+      - "bidirectional sync logic between two DocTypes representing overlapping data"
+    sync_state: synced

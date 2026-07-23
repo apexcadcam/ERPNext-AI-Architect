@@ -33,7 +33,9 @@ Each stage remains a *precondition* for the next — this ordering is part of th
 
 ### Stage 1 — Research + Engineering Rules
 
-**Folders:** [research/](research/), [rules/](rules/)
+**Folders:** [research/](research/), [rules/](rules/), [knowledge-sources/](knowledge-sources/)
+
+The [ERPNext Knowledge Source Catalog](knowledge-sources/KNOWLEDGE_SOURCE_CATALOG.md) identifies and scores every external source Research may draw evidence from — it is an input to this stage, not a stage of its own; no knowledge has been extracted from it yet. The [Knowledge Acquisition Architecture](docs/knowledge-pipeline/KNOWLEDGE_ACQUISITION_ARCHITECTURE.md) designs, but does not implement, the pipeline that would eventually turn that catalog into structured knowledge, and the [Crawler Framework Architecture](docs/crawler/CRAWLER_ARCHITECTURE.md) designs, but does not implement, the modular, plugin-based system that would realize that pipeline's Acquisition stage for hundreds of source connectors — building either is future, separately-scoped work, gated by its own Architecture Review per [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
 
 Nothing gets built before it's understood. `research/` holds open questions about how ERPNext/Frappe actually behaves; once a question is answered with enough confidence and evidence, it becomes a Rule in `rules/`. **Active** — this stage never "completes"; it's the ongoing engine of Phase 2.
 
@@ -68,6 +70,7 @@ Once an Agent needs to actually *do* something against a live bench (read a file
 - **[templates/](templates/)** — implementation scaffolds, added opportunistically once a rule or pattern has proven itself in practice more than once. Not tied to one stage.
 - **[adr/](adr/)** — records of non-obvious decisions about this repository's own structure or process. Used whenever such a decision is made, in any stage — including any future architecture-review decision made under the Architecture Freeze policy above.
 - **[anti-patterns/](anti-patterns/)** — named, recurring bad patterns referenced by rules. Grows alongside `rules/` in Stage 1, but is a cross-cutting reference, not a stage of its own.
+- **[docs/ai-retrieval/](docs/ai-retrieval/)**, **[rules/metadata/](rules/metadata/)**, **[rules/index/](rules/index/)** — an AI retrieval metadata layer, added under [ADR-0001](adr/ADR-0001-ai-retrieval-metadata-layer.md) as the one exception the Architecture Freeze above anticipates: a genuine structural deficiency (no way to find/rank/relate rules at scale beyond reading all of them serially) rather than a redesign for its own sake. Fully additive — `rules/*.md` is untouched.
 
 ## Current status
 

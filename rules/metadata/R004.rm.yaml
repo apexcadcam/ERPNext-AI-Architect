@@ -1,0 +1,86 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0004"
+rule_id: "R004"
+rule_er_id: "ER-0004"
+title: "Fixture & Metadata Integrity"
+source_file: "rules/R004-fixture-and-metadata-integrity.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:b54d33654d233463d3023f355ca0aeba77329138aab302d0224bc095ea21bc74"
+risk_level: Critical
+priority: P0
+
+category: Deployment
+tags: [fixtures, metadata, database, module-scoping]
+keywords:
+  - orphaned custom field
+  - module tag
+  - CannotCreateStandardDoctypeError
+  - Property Setter fixture
+  - fixture resurrection
+  - bench migrate
+  - create_custom_fields
+
+intent: "Keep every piece of custom metadata traceable to, scoped to, and reversible by its owning app."
+problem_statement: "A Custom Field, Property Setter, or other fixture-tracked metadata is being created, modified, or removed in a custom app."
+
+requirements:
+  - id: "R004-REQ-1"
+    modal: MUST
+    statement: "Every Custom Field created programmatically must carry an explicit 'module' tag pointing to the owning custom app."
+    source_anchor: "#rule"
+  - id: "R004-REQ-2"
+    modal: MUST_NOT
+    statement: "Standard DocTypes must never be exported as fixtures; behavioral changes to a standard DocType go through Property Setter fixtures only."
+    source_anchor: "#rule"
+  - id: "R004-REQ-3"
+    modal: MUST
+    statement: "Deleting a fixture-declared field/setter means editing the app's fixture JSON file itself, not just the database record."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "create_custom_fields() call carrying an explicit module key, with standard-doctype behavior changes routed through module-filtered Property Setter fixtures."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "create_custom_fields() with no module key, and a DocType-type fixture entry filtering for the standard 'Customer' doctype."
+
+anti_patterns: []
+exceptions_present: false
+related_rules: ["R005", "R006"]
+
+dependencies:
+  - rule_id: "R006"
+    reason: "R004's fixture-scoping and deletion requirements only make sense against R006's baseline requirement that every UI-created Custom Field/Property Setter is exported as a fixture in the first place."
+
+conflicts: []
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Custom metadata (fields, Property Setters) must be module-tagged, scoped to the owning app, and removed by editing fixture files, never by a bare database delete or an unscoped fixture export."
+  embedding_text: "R004: Fixture & Metadata Integrity. Custom metadata (fields, Property Setters) must be module-tagged, scoped to the owning app, and removed by editing fixture files, never by a bare database delete or an unscoped fixture export. Category: Deployment. Tags: fixtures, metadata, database, module-scoping. Keywords: orphaned custom field, module tag, CannotCreateStandardDoctypeError, Property Setter fixture, fixture resurrection, bench migrate, create_custom_fields."
+  trigger_intents:
+    - "creating a Custom Field programmatically"
+    - "exporting fixtures for a custom app"
+    - "removing a custom field or property setter"
+  applicability_signals:
+    - "create_custom_fields() call without a 'module' key"
+    - "fixtures list in hooks.py containing {'dt': 'DocType', ...}"
+    - "field or setter removed via direct database delete instead of fixture edit"
+  negative_signals: []
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."

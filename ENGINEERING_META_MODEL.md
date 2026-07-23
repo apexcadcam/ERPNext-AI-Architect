@@ -329,6 +329,66 @@ Examples given below are illustrative of the *artifact type*, not implementation
 - **Relationship with other artifacts:** Attached to the artifact it deprecates; points to its replacement (`Rule`, `Pattern`, or `Skill`) if one exists; typically produced as the terminal step of the [Rule Lifecycle](#rule-lifecycle).
 - **Lifecycle:** Issued → Active (grace period, if applicable) → Enforced (artifact fully retired) → Archived alongside the artifact it deprecated.
 
+### 30. Rule Metadata Record (`RM`)
+
+- **Definition:** A machine-authored, structured sidecar to exactly one `Engineering Rule`, holding retrieval-oriented fields the canonical Rule deliberately does not carry — category, tags, keywords, RFC 2119 requirement extraction, dependency/conflict graph edges, AI retrieval hints — per [docs/ai-retrieval/RULE_METADATA_SPECIFICATION.md](docs/ai-retrieval/RULE_METADATA_SPECIFICATION.md). Added by [ADR-0001](adr/ADR-0001-ai-retrieval-metadata-layer.md).
+- **Purpose:** Lets an AI agent find, rank, and relate `Engineering Rule`s at a scale (hundreds of rules) where reading every rule file serially no longer works, without touching the frozen canonical Rule format.
+- **When to create:** Whenever a new `Engineering Rule` reaches `Status: Stable` (or earlier, opportunistically) — every rule should eventually have exactly one `RM` record.
+- **When NOT to create:** As a place to restate or paraphrase the canonical Rule's `Rule`, `Rationale`, `Bad Pattern`, or `Good Pattern` prose — an `RM` field either points into the canonical file or adds genuinely new structure; it never duplicates its content.
+- **Example:** [rules/metadata/R001.rm.yaml](rules/metadata/R001.rm.yaml).
+- **Relationship with other artifacts:** Derived from, and strictly subordinate to, exactly one `Engineering Rule` — if the two ever disagree, the `Engineering Rule` wins and the `RM` record is stale, not the reverse. Aggregated into the `Rule Retrieval Index`.
+- **Lifecycle:** Generated → Validated → Synced → Stale (when the source Rule changes) → Regenerated. See [docs/ai-retrieval/RULE_METADATA_LIFECYCLE.md](docs/ai-retrieval/RULE_METADATA_LIFECYCLE.md).
+
+### 31. Rule Retrieval Index (`RIX`)
+
+- **Definition:** A single generated build artifact compiled from every `Rule Metadata Record`, providing the fast-path lookup structures (by category, by tag, by dependency edge, by conflict edge) an AI agent queries instead of reading every `Engineering Rule` file. Added by [ADR-0001](adr/ADR-0001-ai-retrieval-metadata-layer.md).
+- **Purpose:** The concrete artifact the [Retrieval Strategy](docs/ai-retrieval/RULE_INDEX_SPEC.md) operates against — turns N individually-readable Rule files into one queryable structure.
+- **When to create:** Regenerated whenever any `Rule Metadata Record` changes; never hand-edited.
+- **When NOT to create:** As a place to add judgment not already present in the `RM` records it aggregates — the index is a pure, deterministic compilation, never a source of new claims.
+- **Example:** [rules/index/RULE_INDEX.yaml](rules/index/RULE_INDEX.yaml).
+- **Relationship with other artifacts:** Compiled entirely from `Rule Metadata Record`s; consumed by `Agent`s and `Skill`s during the retrieval phase described in [RULE_INDEX_SPEC.md](docs/ai-retrieval/RULE_INDEX_SPEC.md).
+- **Lifecycle:** Compiled → Published → Recompiled (on any `RM` change) → superseded in place (a build artifact, not a versioned document — its history lives in git, not in an ID sequence).
+
+### 32. Knowledge Document (`KD`)
+
+- **Definition:** A single unit of content acquired from a `Knowledge Source`, carried through cleaning, normalization, and deduplication — an internally-stored, processed copy, distinct from `Reference` (`REF`), which only points at an external document without storing a processed copy of it. Added by [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
+- **Purpose:** The pipeline's staging unit — the thing [KNOWLEDGE_EXTRACTION_SPEC.md](docs/knowledge-pipeline/KNOWLEDGE_EXTRACTION_SPEC.md) actually extracts from, after acquisition but before any claim has been asserted as knowledge.
+- **When to create:** Every time the [Knowledge Acquisition Pipeline](docs/knowledge-pipeline/KNOWLEDGE_ACQUISITION_ARCHITECTURE.md) pulls one page, file, thread, issue, or transcript from a `Knowledge Source`.
+- **When NOT to create:** As a place to assert a fact or claim — a `KD` is raw-but-processed material, never itself a knowledge claim. That's what extraction produces from it.
+- **Example:** A cleaned, normalized copy of one page from `docs.frappe.io/erpnext/v15`, deduplicated against prior crawls of the same page.
+- **Relationship with other artifacts:** Acquired from a `Knowledge Source`; consumed by extraction to produce `Knowledge API`, `Pattern`, `Best Practice`, `Example`, `Workflow`, or `Engineering Rule` candidates.
+- **Lifecycle:** Acquired → Cleaned → Normalized → Deduplicated → Validated → Extracted-from → Archived (retained for audit/provenance, per [KNOWLEDGE_PIPELINE.md](docs/knowledge-pipeline/KNOWLEDGE_PIPELINE.md)).
+
+### 33. Knowledge API (`KA`)
+
+- **Definition:** Structured API-surface knowledge — a DocType field schema, a whitelisted method signature, a hook registration contract — extracted specifically because it has a formal, checkable shape distinct from prose. Added by [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
+- **Purpose:** Gives the pipeline a precise, machine-checkable artifact type for "what can be called, with what shape" — the kind of fact a `Pattern` or `Example` would otherwise have to restate informally every time it's referenced.
+- **When to create:** When extraction encounters a DocType definition, a `@frappe.whitelist()` method, or an equivalent formal interface in official source code or documentation.
+- **When NOT to create:** For narrative usage guidance — that's a `Pattern` or `Example` referencing the `KA`, not the `KA` itself.
+- **Example:** The field schema of the standard `Contact` DocType, as extracted from `frappe/erpnext`'s source (see [R002](rules/R002-native-first-discovery.md)'s Good Pattern, which references exactly this doctype).
+- **Relationship with other artifacts:** Extracted from a `Knowledge Document` sourced from official code/docs; referenced by `Pattern`, `Example`, and `Engineering Rule` candidates that depend on knowing an interface's exact shape.
+- **Lifecycle:** Extracted → Validated → Version-scoped → Stale-flagged on source change → Re-extracted.
+
+### 34. Knowledge Conflict (`KC`)
+
+- **Definition:** A detected disagreement between two or more raw source claims, at the pre-rule pipeline level — distinct from the `conflicts` field [ADR-0001](adr/ADR-0001-ai-retrieval-metadata-layer.md) added to `Rule Metadata Record`, which is rule-to-rule only. Added by [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
+- **Purpose:** Makes disagreement a first-class, queryable artifact instead of letting contradictory extracted claims silently coexist in the graph — see [KNOWLEDGE_CONFLICT_RESOLUTION.md](docs/knowledge-pipeline/KNOWLEDGE_CONFLICT_RESOLUTION.md).
+- **When to create:** Whenever validation detects two claims that cannot both be true for the same scope (same version, same context) and precedence rules don't cleanly resolve it.
+- **When NOT to create:** When precedence rules do resolve it deterministically (e.g., code vs. stale docs) — record the resolution on the losing claim's provenance instead of minting a standing `KC`.
+- **Example:** A conflict between a forum reply describing one migration behavior and the actual `frappe/frappe` source showing different behavior as of a specific version.
+- **Relationship with other artifacts:** References the conflicting `Knowledge Document`/extracted-artifact pair; resolved conflicts point to their resolution; unresolved conflicts block the affected claims from reaching `Stable`-equivalent confidence and are queued for human review.
+- **Lifecycle:** Detected → Triaged → Resolved (deterministically or by human review) → Closed, retained for audit — never deleted.
+
+### 35. Knowledge Graph Node (`KG`)
+
+- **Definition:** A graph-index wrapper around any other artifact instance, carrying its typed relationship edges (`depends_on`, `implements`, `extends`, `replaces`, `conflicts_with`, `related_to`, `deprecated_by`, `supersedes`, `references`) — generalizes `Rule Retrieval Index`'s (`RIX`, entry 31) graph-shaped fields (`dependency_graph`, `conflict_graph`) from `Engineering Rule` alone to every artifact type. Added by [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
+- **Purpose:** The traversable structure [RETRIEVAL_STRATEGY.md](docs/knowledge-pipeline/RETRIEVAL_STRATEGY.md) walks to expand dependencies and build reasoning chains across artifact types, not just within `rules/`.
+- **When to create:** One `KG` node per artifact instance that has at least one typed relationship to another artifact.
+- **When NOT to create:** As a place to hold content — a `KG` node holds edges and a pointer to the artifact it wraps, never a copy of that artifact's actual content.
+- **Example:** The `KG` node wrapping `Engineering Rule` `R007`, carrying a `depends_on` edge to `R003` — the same fact `RM-0007.dependencies` already states, exposed here as a graph edge instead of a YAML field, per [KNOWLEDGE_GRAPH_SPEC.md](docs/knowledge-pipeline/KNOWLEDGE_GRAPH_SPEC.md).
+- **Relationship with other artifacts:** Wraps exactly one instance of any other artifact type; the full set of `KG` nodes and edges forms the Knowledge Graph that `Rule Retrieval Index` is one pre-existing, type-scoped projection of.
+- **Lifecycle:** Created (on artifact creation) → Edges updated (on relationship discovery/change) → Recomputed (on source staleness) → Archived alongside the artifact it wraps.
+
 ---
 
 # Knowledge Hierarchy
@@ -522,6 +582,8 @@ The relationships below form the complete object graph of the repository. Each l
 ├── principles/                    # PRN-####.md — durable values, low volume
 │
 ├── rules/                         # R#### (= ER-####) — the source of truth [existing folder]
+│   ├── metadata/                  # RM-####.rm.yaml — one per rule, derived, non-authoritative [added by ADR-0001]
+│   └── index/                     # RULE_INDEX.yaml (RIX) — generated, never hand-edited [added by ADR-0001]
 │
 ├── decisions/                     # Governance records — append-only, never edited in place
 │   ├── adr/                       # ADR-####.md
@@ -539,6 +601,15 @@ The relationships below form the complete object graph of the repository. Each l
 │   ├── decision-trees/            # DT-####.md
 │   └── checklists/                # CHK-####.md
 │
+├── docs/
+│   ├── ai-retrieval/               # RM/RIX specification, schema, lifecycle, retrieval strategy [added by ADR-0001]
+│   ├── knowledge-pipeline/         # KD/KA/KC/KG pipeline specs: acquisition, extraction, validation,
+│   │                               # conflict resolution, graph, embeddings, retrieval, refresh [added by ADR-0002]
+│   └── crawler/                    # Crawler Framework: pipeline, plugin system, connector spec, storage,
+│                                   # download/rate-limit/retry/error/cache/version policy, observability,
+│                                   # testing — architecture only, extends knowledge-pipeline's Acquisition
+│                                   # stage; reuses MCP/Tool, no new artifact type [see CRAWLER_ARCHITECTURE.md §2.3]
+│
 ├── skills/                        # SK-####/ — one folder per skill (rule + procedure + metadata)
 ├── agents/                        # AG-####.md — persona + composed skill references
 ├── prompts/                       # PMT-####.md — tool-specific, explicitly non-authoritative
@@ -547,12 +618,20 @@ The relationships below form the complete object graph of the repository. Each l
 │   ├── servers/                   # MCP-####.md
 │   └── tools/                     # TL-####.md
 │
+├── crawler/                       # Reserved, not yet created — Source Connector plugin code
+│                                   # (crawler/sources/<name>/), structurally a Tool-like execution
+│                                   # boundary per docs/crawler/CRAWLER_ARCHITECTURE.md §2.3; not populated
+│
 ├── workflows/                     # WF-####.md — cross-artifact process documentation
 ├── templates/                     # TMP-####.md (or scaffold directories referenced by ID)
 ├── examples/                      # EX-####.md — explicitly non-authoritative
 ├── references/                    # REF-####.md
 ├── research/                      # RS-####.md
-├── knowledge-sources/             # KS-####.md
+├── knowledge-sources/             # KS-####.md — see knowledge-sources/README.md for the single-registry approach
+│   └── pipeline/                  # KD/KA/KC/KG instance storage, once the pipeline is implemented [reserved by ADR-0002, not populated]
+│       ├── raw/                   # immutable raw bytes, content-addressed [layout: docs/crawler/STORAGE_LAYOUT.md]
+│       ├── documents/             # Knowledge Document instances (envelope + normalized text + structural metadata)
+│       └── cache/                 # ETag/resume state — expendable, never a source of truth
 ├── migrations/                    # MIG-####.md
 │
 └── changelog/                     # Repository's own version history
@@ -609,6 +688,14 @@ Every artifact instance has a stable, permanent ID: **`PREFIX-NNNN`**, four-digi
 | Architecture Review | `ARV` | `ARV-0001` |
 | Release Note | `RN` | `RN-0001` |
 | Deprecation Notice | `DEP` | `DEP-0001` |
+| Rule Metadata Record | `RM` | `RM-0001` |
+| Rule Retrieval Index | `RIX` | n/a — singleton build artifact, not sequence-numbered |
+| Knowledge Document | `KD` | `KD-0001` |
+| Knowledge API | `KA` | `KA-0001` |
+| Knowledge Conflict | `KC` | `KC-0001` |
+| Knowledge Graph Node | `KG` | `KG-0001` |
+
+**Reconciling `RM-####` with `R0NN`/`ER-####`.** An `RM` record's number always matches the rule it describes: `RM-0001` is the metadata record for `R001` / `ER-0001`, `RM-0002` for `R002` / `ER-0002`, and so on — the same numeric-sequence equivalence used for `ER-####`, extended one layer further. A rule with no `RM` record yet simply has a gap in the `RM` sequence at that number; gaps are expected during rollout and are not renumbered once the record is created.
 
 **Reconciling `ER-####` with the existing `rules/R0NN-*.md` convention.** The `rules/` folder already contains files named `R001`–`R010` and is in active use before this Meta-Model was written. Rather than renaming existing files — a disruptive change with no architectural benefit — the two schemes are declared equivalent by shared numeric sequence: `R001` **is** `ER-0001`, `R002` **is** `ER-0002`, and so on. `R0NN` remains the canonical filename prefix inside `rules/` (short, established, already linked from `AGENTS.md`); `ER-####` is the formal cross-reference ID used by every other artifact type (an `ADR`, `Skill`, or `Checklist` citing a rule uses `ER-0001`, which resolves to `rules/R001-*.md`). This mapping itself should be recorded as an `ADR` the first time a new artifact type is added to the repository, so the reconciliation is traceable rather than assumed.
 

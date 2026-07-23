@@ -1,0 +1,91 @@
+schema_version: "1.0.0"
+rule_metadata_id: "RM-0002"
+rule_id: "R002"
+rule_er_id: "ER-0002"
+title: "Native-First Discovery (Research Before You Build)"
+source_file: "rules/R002-native-first-discovery.md"
+version: "1.0.0"
+status: Stable
+sync_state: synced
+source_content_hash: "sha256:7b0021a7fffb55203e03bfee2a6dabb6948a719e4628414bfaecc7d15a0ba613"
+risk_level: High
+priority: P1
+
+category: Architecture
+tags: [discovery, data-model, native-first]
+keywords:
+  - duplicate data model
+  - reinventing an existing doctype
+  - Address & Contact
+  - child table
+  - standard reports
+  - before building custom
+  - does ERPNext already have this
+
+intent: "Prevent duplicate, competing data models by proving core has no existing answer before any custom structure is designed."
+problem_statement: "A new field, child table, or DocType is being considered to represent a real-world concept that might already exist in core."
+
+requirements:
+  - id: "R002-REQ-1"
+    modal: MUST
+    statement: "Prove that Frappe/ERPNext core does not already solve the problem before designing any new field, child table, or DocType."
+    source_anchor: "#rule"
+  - id: "R002-REQ-2"
+    modal: MUST
+    statement: "Exhaust the standard doctypes, the Address & Contact pattern, existing child tables, and standard reports/dashboards before writing a custom solution."
+    source_anchor: "#rule"
+  - id: "R002-REQ-3"
+    modal: MUST
+    statement: "Use a satisfying native mechanism when one exists, even if it is not a perfect fit, rather than building a parallel structure."
+    source_anchor: "#rule"
+
+good_examples:
+  - source_anchor: "#good-pattern"
+    description: "Native Contact doctype + Contact Phone child table via the Address & Contact widget, extended with one Custom Field for a missing 'primary' flag."
+
+bad_examples:
+  - source_anchor: "#bad-pattern"
+    description: "phone_no_1 / phone_no_2 / phone_no_3 custom fields added to CRM Lead/Customer without checking the native Address & Contact section."
+
+anti_patterns: []
+exceptions_present: true
+related_rules: ["R003", "R008"]
+
+dependencies: []
+
+conflicts:
+  - rule_id: "R001"
+    scenario: "The only close native fit for a requirement is a vendor-shipped DocType whose behavior can only be adjusted by touching its shipped Python file directly, tempting a core edit in the name of 'native-first.'"
+    resolution: "R001 always wins. This rule's discovery mandate never overrides R001 — the correct move is R001's own Good Pattern: reach the vendor DocType only through Custom Field, Property Setter, or hooks.py, never a direct edit, even when no non-invasive path looks like a perfect fit."
+  - rule_id: "R010"
+    scenario: "The only close native fit for a requirement is a DocType that would need fields unrelated to its own one-sentence responsibility bolted on to satisfy R002's 'use it even if imperfect' mandate."
+    resolution: "No true conflict once read precisely: R002's Good Pattern only sanctions extending a native structure with a compatible, closely-related attribute (its own example: adding a missing 'primary' flag to an existing child table) — it does not sanction absorbing an unrelated responsibility. When satisfying R002 would require violating R010's one-sentence-responsibility test, the extension no longer qualifies as R002's Good Pattern, and a new, properly-scoped DocType is required instead."
+
+replacement:
+  supersedes: []
+  superseded_by: null
+
+references: []
+
+ai_retrieval:
+  semantic_summary: "Before designing any new custom field, child table, or DocType, prove no existing native ERPNext structure already covers it, and prefer an imperfect native fit over a parallel custom structure."
+  embedding_text: "R002: Native-First Discovery (Research Before You Build). Before designing any new custom field, child table, or DocType, prove no existing native ERPNext structure already covers it, and prefer an imperfect native fit over a parallel custom structure. Category: Architecture. Tags: discovery, data-model, native-first. Keywords: duplicate data model, reinventing an existing doctype, Address & Contact, child table, standard reports, before building custom, does ERPNext already have this."
+  trigger_intents:
+    - "adding a new custom field to capture data"
+    - "designing a new DocType or child table"
+    - "modeling a business concept that might already exist in ERPNext"
+  applicability_signals:
+    - "proposal introduces a new DocType"
+    - "proposal introduces a new child table"
+    - "proposal adds multiple similarly-named custom fields (e.g. numbered variants)"
+  negative_signals:
+    - "extending an already-confirmed-absent native structure with a Custom Field (the Good Pattern, not a violation)"
+  confidence_weight: 1.0
+
+workflow_ref: null
+
+revision_history:
+  - version: "1.0.0"
+    date: "2026-07-23"
+    change: "Initial AI retrieval metadata generated."
+    reason: "First RM record authored for this rule, per ADR-0001."
