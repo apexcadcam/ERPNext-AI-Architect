@@ -1,0 +1,22 @@
+module_id: integration
+display_name: Integration
+maintained_by: integration-layer
+version: 0.1.0
+
+capabilities_provided:
+  - integration.connector_registry
+capabilities_required: []
+
+pipeline_stage_bindings: []
+
+# Phase 3 publishes nothing yet — ConnectorInvoked/ConnectorSucceeded/
+# ConnectorFailed (SPRINT3_ARCHITECTURE_PACKAGE.md §5.1) are named for a
+# later phase, once a real connector invocation path exists to publish
+# them from. Declaring them here now, unpublished, would be exactly the
+# kind of speculative manifest metadata this project's own discipline
+# argues against.
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"
