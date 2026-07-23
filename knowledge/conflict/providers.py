@@ -21,6 +21,13 @@ from knowledge.artifacts import ContentArtifact
 from knowledge.conflict.resolution import ConflictClaim, PrecedenceTier
 from knowledge.conflict.tags import TAG_AFTER_DOCS_UPDATE, TAG_CONTRADICTS_STABLE_RULE, TAG_STAFF_AUTHORED
 
+#: The Container capability name a `PrecedenceProvider` implementation is
+#: registered under. Shared by knowledge/validation/module.py (Version
+#: Conflict Detection) and knowledge/extraction/module.py (the
+#: knowledge.graph_build Conflict Resolution stage) so both resolve the
+#: identical provider rather than each inventing their own string.
+PRECEDENCE_PROVIDER_CAPABILITY = "knowledge.providers.precedence"
+
 
 class PrecedenceProvider(Protocol):
     """Which KNOWLEDGE_CONFLICT_RESOLUTION.md §1 precedence tier this

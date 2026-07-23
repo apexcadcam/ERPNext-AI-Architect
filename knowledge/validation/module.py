@@ -24,9 +24,10 @@ from __future__ import annotations
 
 from functools import partial
 
+from knowledge.conflict.providers import PRECEDENCE_PROVIDER_CAPABILITY as _PRECEDENCE_PROVIDER_CAPABILITY
+from knowledge.conflict.providers import PrecedenceProvider
 from knowledge.validation import gates
 from knowledge.validation.approval import PendingApprovalStore
-from knowledge.conflict.providers import PrecedenceProvider
 from knowledge.validation.providers import SourceVerifier, TrustScoreProvider
 from knowledge.validation.state import KnowledgeStore
 from runtime.container.di import Container
@@ -57,7 +58,8 @@ class ValidatorModule(Module):
 
     SOURCE_VERIFIER_CAPABILITY = "knowledge.providers.source_verifier"
     TRUST_SCORE_PROVIDER_CAPABILITY = "knowledge.providers.trust_score"
-    PRECEDENCE_PROVIDER_CAPABILITY = "knowledge.providers.precedence"
+    #: Shared with ExtractorModule — see knowledge/conflict/providers.py.
+    PRECEDENCE_PROVIDER_CAPABILITY = _PRECEDENCE_PROVIDER_CAPABILITY
 
     def __init__(self, manifest: ModuleManifest) -> None:
         super().__init__(manifest)

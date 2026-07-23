@@ -1,0 +1,22 @@
+module_id: extractor
+display_name: Extractor
+maintained_by: knowledge-factory
+version: 0.1.0
+
+capabilities_provided:
+  - knowledge.extract
+  - knowledge.extract_patterns
+  - knowledge.resolve_conflicts_batch
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - extraction
+  - pattern_extraction
+  - conflict_resolution
+
+events_published:
+  - ArtifactCreated
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"

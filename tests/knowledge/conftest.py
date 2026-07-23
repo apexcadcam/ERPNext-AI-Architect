@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -27,7 +28,16 @@ from knowledge.artifacts import (
     SourceReference,
 )
 from knowledge.conflict import PrecedenceTier
-from runtime.pipeline.engine import PipelineContext
+from knowledge.conflict.providers import PRECEDENCE_PROVIDER_CAPABILITY
+from knowledge.extraction.module import EVENT_BUS_CAPABILITY as _EXTRACTOR_EVENT_BUS_CAPABILITY
+from knowledge.pipelines import register_knowledge_pipelines
+from knowledge.validation.module import ValidatorModule
+from runtime.container.di import Container
+from runtime.events.bus import EventBus
+from runtime.pipeline.engine import PipelineContext, PipelineEngine
+from runtime.registry.plugin_registry import PluginRegistry
+
+_PLUGINS_DIR = Path(__file__).resolve().parents[2] / "plugins"
 
 
 def _metadata(**overrides: object) -> ArtifactMetadata:
@@ -200,3 +210,65 @@ def pipeline_context() -> PipelineContext:
     return PipelineContext(
         pipeline_run_id="run-1", correlation_id="run-1", pipeline_name="test", started_at=datetime.now(UTC)
     )
+
+
+def fixture_document() -> KnowledgeDocument:
+    """A `Knowledge Document` shaped for `official_documentation` extraction
+    (knowledge/extraction/rules.py), reused by the end-to-end integration
+    and event-publication tests.
+    """
+
+    return KnowledgeDocument(
+        id="KD-0001",
+        metadata=_metadata(extraction_method="official_documentation"),
+        version=ArtifactVersionInfo(applies_to="v15"),
+        source_references=(_source_ref(url="https://docs.frappe.io/framework/user/en/api/client"),),
+        content=KnowledgeDocumentContent(
+            raw_text="...",
+            format="markdown",
+            structural_metadata={
+                "api_specs": [
+                    {
+                        "interface_kind": "whitelisted-method",
+                        "name": "frappe.client.get_list",
+                        "signature": "get_list(doctype, filters=None)",
+                        "span": "## get_list",
+                    }
+                ]
+            },
+        ),
+    )
+
+
+@pytest.fixture
+def wired_engine() -> PipelineEngine:
+    """Discovers and boots the real `extractor`/`validator` plugins from the
+    repository's own `plugins/` directory — the same directory
+    `architect doctor`/`Runtime.boot()` would scan — against a fresh
+    Container, EventBus, and PipelineEngine with both Sprint 2 Pipeline
+    Definitions registered. Used by the end-to-end integration and
+    event-publication tests.
+    """
+
+    registry = PluginRegistry()
+    registry.register_all(registry.discover([_PLUGINS_DIR]))
+    registry.validate_dependencies()
+
+    container = Container()
+    container.register(ValidatorModule.SOURCE_VERIFIER_CAPABILITY, lambda: StaticSourceVerifier(True))
+    container.register(
+        ValidatorModule.TRUST_SCORE_PROVIDER_CAPABILITY, lambda: StaticTrustScoreProvider(score=90)
+    )
+    container.register(PRECEDENCE_PROVIDER_CAPABILITY, lambda: StaticPrecedenceProvider())
+    bus = EventBus()
+    container.register(_EXTRACTOR_EVENT_BUS_CAPABILITY, lambda: bus)
+
+    for module_id in registry.dependency_order():
+        instance = registry.instantiate(module_id)
+        instance.validate()
+        instance.init(container)
+        instance.start()
+
+    engine = PipelineEngine(container, event_bus=bus)
+    register_knowledge_pipelines(engine)
+    return engine
