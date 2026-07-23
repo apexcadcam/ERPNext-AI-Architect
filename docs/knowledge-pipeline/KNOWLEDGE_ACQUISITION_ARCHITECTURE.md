@@ -30,11 +30,6 @@ Normalization                                                │
 Deduplication  ──▶  Knowledge Document (KD)                 ─┘
     │
     ▼
-Validation                                                  ─┐
-    │  [8 gates: schema → dup → version-conflict →           │ KNOWLEDGE_VALIDATION_SPEC.md
-    │   source-verify → trust-verify → engineering-review →  │
-    │   human-approval → confidence-scoring]                 │
-    ▼                                                        ─┘
 Knowledge Extraction                                        ─┐
     │  [per source-type: docs, code, issues, PRs, release    │ KNOWLEDGE_EXTRACTION_SPEC.md
     │   notes, forum, marketplace, tutorials, video, talks]  │
@@ -48,6 +43,11 @@ Pattern Extraction                                           │
 Conflict Resolution ◀─────────────────────────────┘   scenarios, "undecided" escalation]
     │
     ▼
+Validation                                                  ─┐
+    │  [8 gates: schema → dup → version-conflict →           │ KNOWLEDGE_VALIDATION_SPEC.md
+    │   source-verify → trust-verify → engineering-review →  │
+    │   human-approval → confidence-scoring]                 │
+    ▼                                                        ─┘
 Knowledge Graph (KG nodes + typed edges)                    ─┐  KNOWLEDGE_GRAPH_SPEC.md
     │  [depends_on / implements / extends / replaces /       │  [+ KNOWLEDGE_ARTIFACTS.md
     │   conflicts_with / related_to / deprecated_by /        │   for the artifact schemas
@@ -82,8 +82,8 @@ AI Agents
 | [KNOWLEDGE_PIPELINE.md](KNOWLEDGE_PIPELINE.md) | How is raw content acquired, cleaned, normalized, and deduplicated — per source? |
 | [KNOWLEDGE_ARTIFACTS.md](KNOWLEDGE_ARTIFACTS.md) | What artifact types exist, what does every one of them carry (ID, provenance, confidence, relationships)? |
 | [KNOWLEDGE_EXTRACTION_SPEC.md](KNOWLEDGE_EXTRACTION_SPEC.md) | Exactly what gets pulled out of each of the ten source types — and what never does? |
-| [KNOWLEDGE_VALIDATION_SPEC.md](KNOWLEDGE_VALIDATION_SPEC.md) | What eight gates does every artifact pass through before it's trusted? |
 | [KNOWLEDGE_CONFLICT_RESOLUTION.md](KNOWLEDGE_CONFLICT_RESOLUTION.md) | When two sources disagree, what wins, deterministically? |
+| [KNOWLEDGE_VALIDATION_SPEC.md](KNOWLEDGE_VALIDATION_SPEC.md) | What eight gates does every artifact pass through before it's trusted? |
 | [KNOWLEDGE_GRAPH_SPEC.md](KNOWLEDGE_GRAPH_SPEC.md) | How do artifacts relate to each other, structurally? |
 | [EMBEDDING_STRATEGY.md](EMBEDDING_STRATEGY.md) | What gets embedded, what never does, and how? |
 | [RETRIEVAL_STRATEGY.md](RETRIEVAL_STRATEGY.md) | How does an agent actually find, rank, and reason over all of this? |
