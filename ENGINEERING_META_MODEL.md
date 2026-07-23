@@ -605,10 +605,18 @@ The relationships below form the complete object graph of the repository. Each l
 │   ├── ai-retrieval/               # RM/RIX specification, schema, lifecycle, retrieval strategy [added by ADR-0001]
 │   ├── knowledge-pipeline/         # KD/KA/KC/KG pipeline specs: acquisition, extraction, validation,
 │   │                               # conflict resolution, graph, embeddings, retrieval, refresh [added by ADR-0002]
-│   └── crawler/                    # Crawler Framework: pipeline, plugin system, connector spec, storage,
-│                                   # download/rate-limit/retry/error/cache/version policy, observability,
-│                                   # testing — architecture only, extends knowledge-pipeline's Acquisition
-│                                   # stage; reuses MCP/Tool, no new artifact type [see CRAWLER_ARCHITECTURE.md §2.3]
+│   ├── crawler/                    # Crawler Framework: pipeline, plugin system, connector spec, storage,
+│   │                               # download/rate-limit/retry/error/cache/version policy, observability,
+│   │                               # testing — architecture only, extends knowledge-pipeline's Acquisition
+│   │                               # stage; reuses MCP/Tool, no new artifact type [see CRAWLER_ARCHITECTURE.md §2.3]
+│   ├── runtime/                    # Core Runtime Platform: module system, plugin registry, pipeline engine,
+│   │                               # event bus, config, storage abstraction, observability, CLI, lifecycle,
+│   │                               # boot sequence — the execution substrate every module (Crawler included)
+│   │                               # plugs into; no new artifact type [see RUNTIME_ARCHITECTURE.md §3]
+│   └── studio/                     # AI Architect Studio: permanent, purely observational Runtime module —
+│                                   # a real-time Engineering Intelligence Dashboard built entirely from
+│                                   # Event Bus subscriptions; capabilities_provided: [] always, structurally
+│                                   # cannot be depended on or control anything [see STUDIO_ARCHITECTURE.md §4]
 │
 ├── skills/                        # SK-####/ — one folder per skill (rule + procedure + metadata)
 ├── agents/                        # AG-####.md — persona + composed skill references
@@ -618,9 +626,20 @@ The relationships below form the complete object graph of the repository. Each l
 │   ├── servers/                   # MCP-####.md
 │   └── tools/                     # TL-####.md
 │
+├── runtime/                       # Reserved, not yet created — the Core Runtime Platform every module
+│                                   # (including crawler/) plugs into: module system, plugin registry,
+│                                   # pipeline engine, event bus, DI container, storage adapters, CLI
+│                                   # entry point ("architect") — see docs/runtime/RUNTIME_ARCHITECTURE.md
+│
 ├── crawler/                       # Reserved, not yet created — Source Connector plugin code
 │                                   # (crawler/sources/<name>/), structurally a Tool-like execution
-│                                   # boundary per docs/crawler/CRAWLER_ARCHITECTURE.md §2.3; not populated
+│                                   # boundary per docs/crawler/CRAWLER_ARCHITECTURE.md §2.3; not populated;
+│                                   # registers as a module with runtime/ once both are implemented
+│
+├── studio/                        # Reserved, not yet created — AI Architect Studio's own module code
+│                                   # and materialized view-model storage namespace; registers as an
+│                                   # ordinary module with runtime/ per docs/studio/STUDIO_INTEGRATION.md;
+│                                   # provides zero capabilities, consumes Event Bus subscriptions only
 │
 ├── workflows/                     # WF-####.md — cross-artifact process documentation
 ├── templates/                     # TMP-####.md (or scaffold directories referenced by ID)
