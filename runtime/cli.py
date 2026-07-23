@@ -23,7 +23,7 @@ from typing import Annotated
 import typer
 
 from runtime.boot import Runtime
-from runtime.errors import ConfigurationError, DependencyValidationError, RuntimeError_
+from runtime.errors import RuntimeError_
 
 app = typer.Typer(
     name="architect",

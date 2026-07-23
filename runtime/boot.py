@@ -29,7 +29,6 @@ establishes that a violation surfaced at this layer is boot-blocking.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
