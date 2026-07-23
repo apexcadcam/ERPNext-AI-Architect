@@ -27,7 +27,7 @@ Knowledge Source
 Knowledge Document (KD) — ready for validation
       │
       ▼
-Validation  →  Extraction  →  Pattern Extraction  →  Conflict Resolution  →
+Extraction  →  Pattern Extraction  →  Conflict Resolution  →  Validation  →
 Knowledge Graph  →  Embeddings  →  Retrieval  →  AI Agents
 (see their own documents, linked from KNOWLEDGE_ACQUISITION_ARCHITECTURE.md)
 ```

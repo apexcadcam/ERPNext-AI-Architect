@@ -1,0 +1,35 @@
+module_id: validator
+display_name: Validator
+maintained_by: knowledge-factory
+version: 0.1.0
+
+capabilities_provided:
+  - knowledge.validate.schema
+  - knowledge.validate.duplicate
+  - knowledge.validate.version_conflict
+  - knowledge.validate.source_verify
+  - knowledge.validate.trust_verify
+  - knowledge.validate.engineering_review
+  - knowledge.validate.human_approval
+  - knowledge.validate.confidence_score
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - schema_validation
+  - duplicate_detection
+  - version_conflict_detection
+  - source_verification
+  - trust_verification
+  - engineering_review
+  - human_approval_gate
+  - confidence_scoring
+
+events_published:
+  - ConflictDetected
+  - ValidationCompleted
+  - HumanApprovalRequested
+  - HumanApprovalResolved
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"
