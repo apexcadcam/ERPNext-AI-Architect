@@ -96,10 +96,10 @@ class ExecutionEngine:
             else:
                 record = self._skip(step)
             records.append(record)
-            if record.state is StepExecutionState.SUCCEEDED:
+            run.step_records = tuple(records)  # §20: a held ExecutionRun reference
+            if record.state is StepExecutionState.SUCCEEDED:  # reflects progress so far, not just the end
                 succeeded_step_ids.add(step.step_id)
 
-        run.step_records = tuple(records)
         final_state = self._finalize_run(run, run_lifecycle, records)
         return ExecutionResult(
             execution_run_id=run.execution_run_id,
