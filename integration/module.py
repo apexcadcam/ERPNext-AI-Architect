@@ -39,13 +39,20 @@ class IntegrationModule(Module):
     """Hosts the nested `ConnectorRegistry`. Provides
     `integration.connector_registry`; requires nothing.
 
-    `connector_search_paths` is set by whoever assembles the Runtime,
-    before `init()` runs — mirroring how `Runtime.__init__` itself takes
-    `plugin_search_paths` explicitly (`runtime/boot.py`) rather than a
-    module inventing its own configuration-resolution mechanism. Empty by
-    default: with no search paths configured, `init()` discovers zero
-    connectors, a normal and expected state per Phase 3's own scope ("no
-    actual connectors") — not an error, the same way an empty
+    `connector_search_paths` may still be set by hand by whoever assembles
+    the Runtime, before `init()` runs, exactly as originally designed —
+    that path is unchanged and always takes priority if already set.
+    `init()` additionally resolves it from the Configuration System, via
+    the `"runtime.config"` capability (Sprint 6 Architecture Package §7.3,
+    §18 ADR Candidate B), closing `ADR-0009`'s own long-named
+    `connector_search_paths` wiring gap generically — no special-casing of
+    Integration by name anywhere in `runtime/boot.py`, the same "resolve
+    it yourself, don't have the Runtime hand it to you" discipline
+    `runtime.event_bus` already established for `knowledge/extraction/
+    module.py`/`knowledge/validation/module.py`. Empty by default: with no
+    search paths configured (by hand or by config), `init()` discovers
+    zero connectors, a normal and expected state per Phase 3's own scope
+    ("no actual connectors") — not an error, the same way an empty
     `plugin_search_paths` list is a normal, working Runtime configuration
     today.
     """
@@ -56,6 +63,11 @@ class IntegrationModule(Module):
         self.connector_search_paths: list[Path] = []
 
     def init(self, container: Container) -> None:
+        if not self.connector_search_paths and container.is_registered("runtime.config"):
+            config_loader = container.resolve("runtime.config")
+            resolved = config_loader.resolve(module_id=self.manifest.module_id, strict=False)
+            self.connector_search_paths = [Path(p) for p in resolved.get("connector_search_paths", [])]
+
         discovered = self.registry.discover(self.connector_search_paths)
         self.registry.register_all(discovered)
         self.registry.validate()
