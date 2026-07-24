@@ -1,4 +1,4 @@
-"""The Execution Engine — Sprint 5, Phases 2-4.
+"""The Execution Engine — Sprint 5, Phases 2-5.
 
 Implements the approved Sprint 5 Architecture Package's foundational data
 models (§10), state machines (§12), error hierarchy (§16.1), and
@@ -6,16 +6,21 @@ event-type identifiers (§21.1) — Phase 2 — the read/invoke-only input
 surface: `ExecutionContext` (§11), `ConnectorInvoker` + `RegistryConnectorInvoker`
 (§9.3), `ConfirmationProvider` + `DenyAllConfirmationProvider` (§9.4),
 `RollbackStrategy` + `UnsupportedRollbackStrategy` (§9.5, §19),
-`CancellationToken` (§18), and `StepScheduler` (§7, §24) — Phase 3 — and
-two pure-logic components, `ConfirmationGate` and `RetryPolicy` (§8, §14,
-§17) — Phase 4. `ExecutionEngine` itself is still later-phase scope; none
-of Phase 4's two components are wired into a full orchestration loop yet.
+`CancellationToken` (§18), and `StepScheduler` (§7, §24) — Phase 3 — two
+pure-logic components, `ConfirmationGate` and `RetryPolicy` (§8, §14, §17)
+— Phase 4 — and `ExecutionEngine` itself (§8, §9.2, §15), wiring all of the
+above into a full orchestration loop for `execute(plan, context) ->
+ExecutionResult` — Phase 5. Rollback (§19) and `cancellation_token`
+checks (§18) are not wired into the loop yet; both are Phase 6 scope.
 
-`ExecutionContext` has no `event_bus` field, `RegistryConnectorInvoker`
-publishes no events, and `RetryPolicy` has no approved path to obtain a
-`ConnectorRegistry` reference within `ExecutionEngine` — all three remain
-open questions for Phase 5 (see `execution/context.py` and
-`execution/retry.py`'s own docstrings).
+`RetryPolicy`'s `ConnectorRegistry` access is resolved: `ExecutionEngine`
+takes a `RetryPolicy` at construction (`ADR-0014`), mirroring
+`RegistryConnectorInvoker`'s own constructor-injection shape one layer
+down. `ExecutionContext` still has no `event_bus` field, so
+`RegistryConnectorInvoker` and `ExecutionEngine` both publish no events —
+still an open question, orthogonal to `ADR-0014`, for a future phase (see
+`execution/context.py`, `execution/connector_invoker.py`, and
+`execution/engine.py`'s own docstrings).
 
 Depends on `execution/`'s own modules, `runtime.lifecycle` (`StateMachine`,
 reused, not modified), `integration.contract`/`integration.lifecycle`/
@@ -32,6 +37,7 @@ from execution.confirmation_gate import ConfirmationGate
 from execution.connector_invoker import ConnectorInvoker, RegistryConnectorInvoker
 from execution.context import ExecutionContext
 from execution.contract import ExecutionResult, ExecutionRun, RollbackOutcome, StepExecutionRecord
+from execution.engine import ExecutionEngine
 from execution.errors import (
     ConfirmationDeniedError,
     ExecutionCancelledError,
@@ -80,6 +86,7 @@ __all__ = [
     "DenyAllConfirmationProvider",
     "ExecutionCancelledError",
     "ExecutionContext",
+    "ExecutionEngine",
     "ExecutionError_",
     "ExecutionResult",
     "ExecutionRun",
