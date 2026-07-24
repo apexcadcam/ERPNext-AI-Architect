@@ -38,6 +38,10 @@ class ConnectorValidationError(IntegrationError_):
 
 
 class ConnectorLifecycleError(IntegrationError_):
-    """A connector's initialize()/connect()/disconnect()/health_check()
-    hook failed, or was invoked out of the declared lifecycle order.
+    """A connector's initialize()/connect()/disconnect()/health_check()/
+    invoke() hook failed, or was invoked out of the declared lifecycle
+    order — including `invoke()` being called before `connect()` has
+    succeeded (Sprint 5, Phase 1). An ordinary operational failure inside
+    an operation itself is never this — it is reported as a
+    `ConnectorResponse(status="failure", ...)`, not raised.
     """

@@ -20,7 +20,7 @@ identical discipline for Module manifests, one level down.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -204,3 +204,39 @@ def load_connector_manifest(path: Path) -> ConnectorManifest:
         return ConnectorManifest(**data)
     except Exception as exc:  # pydantic.ValidationError and friends
         raise ConnectorManifestError(f"connector manifest {path} failed schema validation: {exc}") from exc
+
+
+class ConnectorRequest(BaseModel):
+    """SPRINT3_ARCHITECTURE_PACKAGE.md §6.2's Connector Request/Response
+    Envelope — designed there, implemented here (Sprint 5, closing
+    `ADR-0009`'s C1 finding). The one fixed shape every Connector operation
+    is invoked through, regardless of `target_system_type`.
+
+    `operation` names the same capability string `ConnectorOperation.name`/
+    `.capability` already declares (§6.3) — a connector's `invoke()` (see
+    `integration.lifecycle.ConnectorLifecycle`) dispatches on this field.
+    `parameters` is opaque to this contract, per §6.1 declaration 5 —
+    meaningful only to the connector and its caller.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: str = Field(min_length=1)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    correlation_id: str = Field(min_length=1)
+    requested_by: str = Field(min_length=1)
+
+
+class ConnectorResponse(BaseModel):
+    """SPRINT3_ARCHITECTURE_PACKAGE.md §6.2's Connector Request/Response
+    Envelope, response half. `result` is opaque, per the same §6.1
+    declaration 5 discipline as `ConnectorRequest.parameters`. `diagnostics`
+    never carries a literal secret (§8.5, inherited unmodified).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: Literal["success", "failure", "partial"]
+    result: dict[str, Any] = Field(default_factory=dict)
+    diagnostics: str = ""
+    correlation_id: str = Field(min_length=1)

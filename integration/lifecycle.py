@@ -7,10 +7,18 @@ five-hook lifecycle (`validate`/`init`/`start`/`stop`/`health_check`) one
 layer down, per SPRINT3_ARCHITECTURE_PACKAGE.md §5.4's "validated by the
 same... checks... applied one level down."
 
+Sprint 5, Phase 1 adds one more abstract method, `invoke()` — completing
+SPRINT3_ARCHITECTURE_PACKAGE.md §6.2's own Connector Request/Response
+Envelope design, never implemented until now (`ADR-0009`'s C1 finding).
+Per the Sprint 5 Architecture Package §9.1's own Design Rationale, `invoke()`
+belongs on this same class rather than a separate interface: the connection
+state it needs is exactly the state `connect()` already sets up on the same
+instance, and splitting the two would not reduce that coupling, only add a
+second contract for no offsetting benefit.
+
 No implementation logic and no networking live here — this is an abstract
-interface only. A concrete connector (a later phase, explicitly out of
-Phase 3's scope) supplies real `connect()`/`health_check()` behavior
-against a real external system.
+interface only. A concrete connector supplies real `connect()`/
+`health_check()`/`invoke()` behavior against a real external system.
 """
 
 from __future__ import annotations
@@ -19,7 +27,7 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel, ConfigDict
 
-from integration.contract import ConnectorManifest
+from integration.contract import ConnectorManifest, ConnectorRequest, ConnectorResponse
 
 
 class ConnectorHealth(BaseModel):
@@ -71,4 +79,20 @@ class ConnectorLifecycle(ABC):
         """§6.1 declaration 9: a lightweight, read-only, side-effect-free
         probe — always present, regardless of what this connector's real
         Operation Catalog contains.
+        """
+
+    @abstractmethod
+    def invoke(self, request: ConnectorRequest) -> ConnectorResponse:
+        """§6.2's Connector Request/Response Envelope: the one, generic way
+        every operation in this connector's Operation Catalog is called.
+        Dispatches on `request.operation` (matching a declared
+        `ConnectorOperation.name`/`.capability`) to this connector's own
+        implementation of that operation.
+
+        Must never be called before `connect()` has succeeded (§5.3) — a
+        connector raises `ConnectorLifecycleError` if it is. An ordinary
+        operational failure (a missing file, an invalid parameter, a
+        downstream error) is never raised — it is reported as
+        `ConnectorResponse(status="failure", diagnostics=...)`; raising is
+        reserved for a genuine lifecycle-contract violation.
         """

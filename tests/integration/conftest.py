@@ -17,6 +17,7 @@ import yaml
 
 DEFAULT_CONNECTOR_PY = textwrap.dedent(
     """
+    from integration.contract import ConnectorResponse
     from integration.lifecycle import ConnectorHealth, ConnectorLifecycle
 
     class _TestConnector(ConnectorLifecycle):
@@ -25,6 +26,9 @@ DEFAULT_CONNECTOR_PY = textwrap.dedent(
 
         def health_check(self):
             return ConnectorHealth(healthy=True, detail="test connector alive")
+
+        def invoke(self, request):
+            return ConnectorResponse(status="success", correlation_id=request.correlation_id)
 
     def create(manifest):
         return _TestConnector(manifest)

@@ -91,6 +91,7 @@ def make_validated_knowledge_api(
 #: specific.
 ECHO_CONNECTOR_PY = textwrap.dedent(
     """
+    from integration.contract import ConnectorResponse
     from integration.lifecycle import ConnectorHealth, ConnectorLifecycle
 
     class EchoConnector(ConnectorLifecycle):
@@ -99,6 +100,9 @@ ECHO_CONNECTOR_PY = textwrap.dedent(
 
         def health_check(self):
             return ConnectorHealth(healthy=True, detail="echo connector alive")
+
+        def invoke(self, request):
+            return ConnectorResponse(status="success", correlation_id=request.correlation_id)
 
         def echo(self, message: str) -> str:
             return message
