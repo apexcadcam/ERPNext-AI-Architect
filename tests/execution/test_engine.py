@@ -1,5 +1,5 @@
 """Tests for `ExecutionEngine` (Sprint 5 Architecture Package §8, §9.2,
-§15), Phase 5.
+§15, §18, §19), Phases 5 and 6.
 
 Uses `_ScriptedConnectorInvoker` (a fake `ConnectorInvoker`, no live
 connector) paired with a small, self-contained `ConnectorRegistry` built
@@ -26,11 +26,12 @@ from planning.contract import Plan, PlanStep, RuntimeContextInfo
 from execution.cancellation import CancellationToken
 from execution.confirmation import ConfirmationProvider, DenyAllConfirmationProvider
 from execution.context import ExecutionContext
-from execution.contract import ExecutionRun
+from execution.contract import ExecutionRun, RollbackOutcome, StepExecutionRecord
 from execution.engine import ExecutionEngine
 from execution.errors import PlanNotExecutableError
 from execution.lifecycle import ExecutionRunState, StepExecutionState
 from execution.retry import RetryPolicy
+from execution.rollback import RollbackStrategy, UnsupportedRollbackStrategy
 
 
 class _ScriptedConnectorInvoker:
@@ -421,3 +422,244 @@ def test_end_to_end_against_the_real_filesystem_connector(tmp_path: Path) -> Non
     assert result.final_state is ExecutionRunState.COMPLETED
     assert all(r.state is StepExecutionState.SUCCEEDED for r in result.step_records)
     assert (tmp_path / "output.txt").read_text(encoding="utf-8") == "hello"
+
+
+# -- Cancellation (§18) -----------------------------------------------------------------
+
+
+def test_cancellation_before_the_run_starts_skips_every_step(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    context = _context(invoker=invoker)
+    context.cancellation_token.request_cancellation()
+    plan = _plan((_step("S-1", "a.op"), _step("S-2", "a.op")))
+
+    result = engine.execute(plan, context)
+
+    assert result.final_state is ExecutionRunState.CANCELLED
+    assert all(r.state is StepExecutionState.SKIPPED for r in result.step_records)
+    assert invoker.calls == []
+
+
+def test_cancellation_signaled_mid_run_lets_the_current_step_finish_first(tmp_path: Path) -> None:
+    class _CancelOnFirstConfirm(ConfirmationProvider):
+        """Signals cancellation the moment the engine consults it for the
+        first step -- proving that step, already past its own cancellation
+        checkpoint, still runs to completion rather than being interrupted.
+        """
+
+        def __init__(self, token: CancellationToken) -> None:
+            self._token = token
+
+        def confirm(self, step: PlanStep, run: ExecutionRun) -> bool:
+            self._token.request_cancellation()
+            return True
+
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS], "b.op": [_SUCCESS]})
+    token = CancellationToken()
+    context = ExecutionContext(
+        connector_invoker=invoker,
+        confirmation_provider=_CancelOnFirstConfirm(token),
+        runtime_context=RuntimeContextInfo(environment="Development", requested_by="test-suite"),
+        correlation_id="corr-1",
+        cancellation_token=token,
+    )
+    plan = _plan(
+        (
+            _step("S-1", "a.op", requires_confirmation=True),
+            _step("S-2", "b.op", requires_confirmation=True),
+        )
+    )
+    registry = _registry(
+        tmp_path,
+        [
+            {"name": "a.op", "kind": "read", "idempotent": True},
+            {"name": "b.op", "kind": "read", "idempotent": True},
+        ],
+    )
+    engine = ExecutionEngine(RetryPolicy(registry))
+
+    result = engine.execute(plan, context)
+
+    records = {r.step_id: r.state for r in result.step_records}
+    assert records["S-1"] is StepExecutionState.SUCCEEDED  # already dispatched -- runs to completion
+    assert records["S-2"] is StepExecutionState.SKIPPED  # never reached -- cancellation caught it first
+    assert result.final_state is ExecutionRunState.CANCELLED
+    assert invoker.calls == ["a.op"]
+
+
+def test_cancellation_final_state_is_cancelled_even_if_an_earlier_step_failed(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE]})
+    context = _context(invoker=invoker)
+    plan = _plan((_step("S-1", "a.op"), _step("S-2", "a.op")))
+
+    # A wrapping fake invoker signals cancellation right after S-1's own
+    # invocation completes (and fails) -- S-2 has no dependency on S-1, so
+    # its own cancellation check (not an unmet-dependency skip) is what
+    # catches it here.
+    class _CancelAfterFirstInvoke:
+        def __init__(self, inner: _ScriptedConnectorInvoker, token: CancellationToken) -> None:
+            self._inner = inner
+            self._token = token
+            self._invocations = 0
+
+        def is_available(self, capability: str) -> bool:
+            return self._inner.is_available(capability)
+
+        def invoke(
+            self, capability: str, parameters: dict[str, Any], *, correlation_id: str, requested_by: str
+        ) -> ConnectorResponse:
+            self._invocations += 1
+            if self._invocations == 1:
+                self._token.request_cancellation()
+            return self._inner.invoke(
+                capability, parameters, correlation_id=correlation_id, requested_by=requested_by
+            )
+
+    wrapped = _CancelAfterFirstInvoke(invoker, context.cancellation_token)
+    context = ExecutionContext(
+        connector_invoker=wrapped,
+        confirmation_provider=context.confirmation_provider,
+        runtime_context=context.runtime_context,
+        correlation_id=context.correlation_id,
+        cancellation_token=context.cancellation_token,
+    )
+
+    result = engine.execute(plan, context)
+
+    records = {r.step_id: r.state for r in result.step_records}
+    assert records["S-1"] is StepExecutionState.FAILED
+    assert records["S-2"] is StepExecutionState.SKIPPED
+    assert result.final_state is ExecutionRunState.CANCELLED  # cancellation wins over the earlier failure
+
+
+# -- Rollback (§19) -----------------------------------------------------------------------
+
+
+class _AlwaysRollbackStrategy(RollbackStrategy):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def rollback(self, record: StepExecutionRecord, context: ExecutionContext) -> RollbackOutcome:
+        self.calls.append(record.step_id)
+        return RollbackOutcome(supported=True, detail="undone")
+
+
+def test_rollback_not_attempted_when_the_default_strategy_is_used(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE]})
+    context = _context(invoker=invoker)
+    assert isinstance(context.rollback_strategy, UnsupportedRollbackStrategy)
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    assert result.rollback_attempted is False
+    assert result.final_state is ExecutionRunState.FAILED
+    assert result.step_records[0].rollback_outcome is None
+
+
+def test_rollback_not_attempted_for_a_completed_or_cancelled_run(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    strategy = _AlwaysRollbackStrategy()
+    context = ExecutionContext(
+        connector_invoker=invoker,
+        confirmation_provider=DenyAllConfirmationProvider(),
+        rollback_strategy=strategy,
+        runtime_context=RuntimeContextInfo(environment="Development", requested_by="test-suite"),
+        correlation_id="corr-1",
+        cancellation_token=CancellationToken(),
+    )
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    assert result.final_state is ExecutionRunState.COMPLETED
+    assert result.rollback_attempted is False
+    assert strategy.calls == []
+
+
+def test_rollback_pass_attempted_and_honestly_unsupported(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE]})
+    context = ExecutionContext(
+        connector_invoker=invoker,
+        confirmation_provider=DenyAllConfirmationProvider(),
+        rollback_strategy=UnsupportedRollbackStrategy(),
+        runtime_context=RuntimeContextInfo(environment="Development", requested_by="test-suite"),
+        correlation_id="corr-1",
+        cancellation_token=CancellationToken(),
+    )
+    # UnsupportedRollbackStrategy() constructed explicitly, not the field's
+    # own default -- still recognized as "not opted in" by isinstance, so
+    # this must behave identically to the default-field case above.
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    assert result.rollback_attempted is False
+    assert result.final_state is ExecutionRunState.FAILED
+
+
+def test_rollback_pass_attempted_and_marks_supported_steps_rolled_back(tmp_path: Path) -> None:
+    registry = _registry(
+        tmp_path,
+        [
+            {"name": "a.op", "kind": "write", "idempotent": False},
+            {"name": "b.op", "kind": "read", "idempotent": True},
+        ],
+    )
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE], "b.op": [_SUCCESS]})
+    strategy = _AlwaysRollbackStrategy()
+    context = ExecutionContext(
+        connector_invoker=invoker,
+        confirmation_provider=DenyAllConfirmationProvider(),
+        rollback_strategy=strategy,
+        runtime_context=RuntimeContextInfo(environment="Development", requested_by="test-suite"),
+        correlation_id="corr-1",
+        cancellation_token=CancellationToken(),
+    )
+    plan = _plan((_step("S-1", "a.op"), _step("S-2", "b.op")))
+
+    result = engine.execute(plan, context)
+
+    assert result.rollback_attempted is True
+    assert result.final_state is ExecutionRunState.ROLLED_BACK
+    records = {r.step_id: r for r in result.step_records}
+    assert records["S-1"].state is StepExecutionState.ROLLED_BACK
+    assert records["S-1"].rollback_outcome == RollbackOutcome(supported=True, detail="undone")
+    assert (
+        records["S-2"].state is StepExecutionState.SUCCEEDED
+    )  # untouched -- rollback only visits FAILED steps
+    assert records["S-2"].rollback_outcome is None
+    assert strategy.calls == ["S-1"]
+
+
+def test_rollback_never_silently_promotes_an_unsupported_step_to_rolled_back(tmp_path: Path) -> None:
+    class _NeverSupportedStrategy(RollbackStrategy):
+        def rollback(self, record: StepExecutionRecord, context: ExecutionContext) -> RollbackOutcome:
+            return RollbackOutcome(supported=False, detail="cannot undo a write")
+
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE]})
+    context = ExecutionContext(
+        connector_invoker=invoker,
+        confirmation_provider=DenyAllConfirmationProvider(),
+        rollback_strategy=_NeverSupportedStrategy(),
+        runtime_context=RuntimeContextInfo(environment="Development", requested_by="test-suite"),
+        correlation_id="corr-1",
+        cancellation_token=CancellationToken(),
+    )
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    assert result.rollback_attempted is True
+    assert result.final_state is ExecutionRunState.ROLLED_BACK  # the pass ran to completion
+    record = result.step_records[0]
+    assert record.state is StepExecutionState.FAILED  # never promoted -- rollback was refused
+    assert record.rollback_outcome == RollbackOutcome(supported=False, detail="cannot undo a write")
