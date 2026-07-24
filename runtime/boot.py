@@ -94,6 +94,19 @@ class Runtime:
         self.event_bus = EventBus()
         self.pipeline_engine = PipelineEngine(self.container, self.event_bus)
 
+        # Well-known, Container-resolvable Runtime infrastructure capabilities
+        # (Sprint 6 Architecture Package §18, ADR Candidate B) — registered
+        # unconditionally, here at construction, so every module can resolve
+        # either from its very first init() call onward, regardless of
+        # whether boot() has run yet. Neither appears in any module's own
+        # capabilities_provided/capabilities_required (§11): both are Runtime
+        # infrastructure, not a contingent, module-provided capability.
+        # "runtime.event_bus" is already referenced, defensively, by
+        # knowledge/extraction/module.py and knowledge/validation/module.py —
+        # this is the first place anything actually registers it.
+        self.container.register("runtime.event_bus", lambda: self.event_bus)
+        self.container.register("runtime.config", lambda: self.config_loader)
+
         self._lifecycle = new_runtime_lifecycle()
         self._module_records: dict[str, ModuleRuntimeRecord] = {}
         self._resolved_config: ResolvedConfig | None = None

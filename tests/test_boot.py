@@ -172,6 +172,52 @@ def test_a_module_that_never_self_registers_still_resolves_to_the_module_instanc
     runtime.shutdown()
 
 
+def test_runtime_event_bus_capability_is_registered_before_boot(config_dir: Path, plugins_dir: Path) -> None:
+    # ADR Candidate B (Sprint 6 Architecture Package §18): registered at
+    # Runtime construction, unconditionally -- available even if boot()
+    # never runs, and regardless of how many plugins exist.
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
+
+    assert runtime.container.is_registered("runtime.event_bus")
+    assert runtime.container.resolve("runtime.event_bus") is runtime.event_bus
+
+
+def test_runtime_config_capability_is_registered_before_boot(config_dir: Path, plugins_dir: Path) -> None:
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
+
+    assert runtime.container.is_registered("runtime.config")
+    assert runtime.container.resolve("runtime.config") is runtime.config_loader
+
+
+def test_runtime_event_bus_and_config_capabilities_still_resolve_after_boot_with_zero_plugins(
+    config_dir: Path, plugins_dir: Path
+) -> None:
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
+    runtime.boot()
+
+    assert runtime.container.resolve("runtime.event_bus") is runtime.event_bus
+    assert runtime.container.resolve("runtime.config") is runtime.config_loader
+    runtime.shutdown()
+
+
+def test_runtime_event_bus_and_config_are_container_infrastructure_not_module_capabilities(
+    make_plugin: Callable[..., Path], config_dir: Path, plugins_dir: Path
+) -> None:
+    # Neither capability is module-provided (architecture package §11,
+    # §18): no manifest declares either, yet both remain resolvable
+    # through the Container regardless -- Runtime infrastructure, not a
+    # contingent, module-graph-validated dependency.
+    make_plugin("demo", capabilities_provided=["demo.capability"])
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
+    runtime.boot()
+
+    assert "runtime.event_bus" not in runtime.registry.all_provided_capabilities()
+    assert "runtime.config" not in runtime.registry.all_provided_capabilities()
+    assert runtime.container.is_registered("runtime.event_bus")
+    assert runtime.container.is_registered("runtime.config")
+    runtime.shutdown()
+
+
 def test_shutdown_is_safe_to_call_on_an_already_booted_and_stopped_runtime(
     config_dir: Path, plugins_dir: Path
 ) -> None:
