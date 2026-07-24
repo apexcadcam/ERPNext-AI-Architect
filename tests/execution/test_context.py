@@ -71,10 +71,19 @@ def test_execution_context_cancellation_token_is_required() -> None:
         )
 
 
-def test_execution_context_has_no_event_bus_field() -> None:
-    # Locks in this phase's own disclosed scope decision: event_bus
-    # remains a pending, unresolved architecture clarification.
-    assert "event_bus" not in ExecutionContext.model_fields
+def test_execution_context_event_bus_defaults_to_none() -> None:
+    # Sprint 6 Architecture Package §18, ADR Candidate C: event_bus is now
+    # an approved, optional, additive field -- every construction that
+    # predates this Sprint (like every other test in this file) omits it
+    # and must keep working unchanged.
+    context = ExecutionContext(
+        connector_invoker=_NullConnectorInvoker(),
+        confirmation_provider=DenyAllConfirmationProvider(),
+        runtime_context=_runtime_context(),
+        correlation_id="corr-1",
+        cancellation_token=CancellationToken(),
+    )
+    assert context.event_bus is None
 
 
 def test_execution_context_is_frozen() -> None:

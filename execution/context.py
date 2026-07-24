@@ -1,21 +1,27 @@
-"""`ExecutionContext` — Sprint 5 Architecture Package §11.
+"""`ExecutionContext` — Sprint 5 Architecture Package §11, extended by
+Sprint 6 Architecture Package §18 (ADR Candidate C).
 
 The Executor's complete, read-only input bundle, mirroring `planning.
 context.PlanningContext`'s own "complete, immutable, read-only input
-bundle" shape. Fields are exactly the approved §11 table — **no
-`event_bus` field**: that addition is a still-open, unresolved architecture
-clarification (see the Sprint 5 Implementation Plan's own Planning Notes
-and the "Implementation Plan should not extend the approved architecture"
-review comment) and this phase does not add it on its own authority.
-Consequently, `execution/connector_invoker.py`'s `RegistryConnectorInvoker`
-has no way to publish `ConnectorInvoked`/`Succeeded`/`Failed`, and nothing
-in this phase publishes `execution/events.py`'s own identifiers either —
-both remain contingent on that clarification being resolved in a later
-phase.
+bundle" shape. Fields are the approved Sprint 5 §11 table, plus one
+optional, additive field this Sprint approved: `event_bus`. Sprint 5 left
+this deliberately unresolved (see the Sprint 5 Implementation Plan's own
+Planning Notes and the "Implementation Plan should not extend the approved
+architecture" review comment) — `runtime.event_bus` (Sprint 6 ADR
+Candidate B) is what finally gave this field something real to wire to.
+`event_bus: EventBus | None = None` is optional and defaulted: every
+`ExecutionContext(...)` construction that predates this Sprint remains
+valid unchanged. `execution/connector_invoker.py`'s
+`RegistryConnectorInvoker` still publishes nothing — `ConnectorInvoked`/
+`Succeeded`/`Failed` remain a separate, still-undecided question,
+deliberately not folded into this same extension (Sprint 6 Architecture
+Package §18, ADR Candidate C's own Consequence paragraph).
 
-Only `rollback_strategy` defaults — §19's own approved text explicitly
-states "`ExecutionContext.rollback_strategy` defaults to
-`UnsupportedRollbackStrategy`." `confirmation_provider` and
+Of the required-vs-optional fields, only `rollback_strategy` and (now)
+`event_bus` default — §19's own approved text explicitly states
+"`ExecutionContext.rollback_strategy` defaults to
+`UnsupportedRollbackStrategy`," and `event_bus`'s own default of `None`
+matches the same "safe to omit" shape. `confirmation_provider` and
 `cancellation_token` are left **required**, not defaulted, even though
 §9.4 separately calls `DenyAllConfirmationProvider` "the safest possible
 default" — that sentence describes the reference *implementation*, not a
@@ -35,6 +41,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from planning.contract import RuntimeContextInfo
+from runtime.events.bus import EventBus
 
 from execution.cancellation import CancellationToken
 from execution.confirmation import ConfirmationProvider
@@ -56,3 +63,8 @@ class ExecutionContext(BaseModel):
     runtime_context: RuntimeContextInfo
     correlation_id: str = Field(min_length=1)
     cancellation_token: CancellationToken
+    #: Sprint 6 Architecture Package §18, ADR Candidate C. `ExecutionEngine`
+    #: treats this as a publish-only collaboration -- the only method it
+    #: ever calls on it is `publish()` -- even though `EventBus` itself
+    #: exposes more (see execution/engine.py's own docstring).
+    event_bus: EventBus | None = None
