@@ -1,7 +1,7 @@
 """`PlanningEngine` — the orchestration host for one `create_plan()` call.
 
 Implements the approved Sprint 4 Architecture Package §3.2/§4.1's
-`PlanningEngine`, scoped exactly to this phase's own Responsibilities list:
+`PlanningEngine`, scoped exactly to Phase 4's own Responsibilities list:
 
   1. Accept a `Goal` + `PlanningContext`.
   2. Resolve the configured strategy (a placeholder here — real
@@ -19,39 +19,29 @@ delegates (3) to whatever strategy is registered and (4) to
 `PlanningContext.graph`, and never mutates the `Goal`/`PlanningContext` it
 is given.
 
-**On `PlannerStrategy`:** the architecture package's §3.3/§4.2 describes a
-`PlannerStrategy` "contract" — a swappable reasoning core. This phase's own
-scope explicitly forbids "PlannerStrategy concrete implementations" and
-restricts this phase to creating `engine.py` alone (no `planning/strategy.py`).
-`PlannerStrategy` is therefore defined here as a plain
-`Callable[[Goal, PlanningContext], Plan]` type alias — a fixed contract (a
-function signature), not a class with anything to subclass or "implement."
-This satisfies the architecture package's own description without adding a
-class hierarchy this phase has no mandate to build; a future phase may
-promote it to a formal `Protocol`/ABC in its own dedicated file without
-changing `PlanningEngine`'s public API, since any callable object (including
-one implementing `__call__`) already satisfies this type.
+**On `PlannerStrategy`:** Phase 4 defined a temporary
+`Callable[[Goal, PlanningContext], Plan]` type alias here, documented at the
+time as a placeholder pending the permanent, architecture-defined contract.
+Phase 5 (`planning/strategy.py`) now supplies that permanent contract — a
+`PlannerStrategy` `ABC` with a single `create_plan(goal, context) -> Plan`
+abstract method — and this module is updated to use it; `PlanningEngine`'s
+own orchestration logic (the five steps above) is otherwise unchanged.
 
 **On events:** this phase's Responsibilities list is a closed, five-item
 list that does not mention publishing `PlanningStarted`/`PlanCreated`/
 `PlanValidationFailed`/`PlanningFailed` (Phase 1, `planning/events.py`).
 Event publication is therefore deliberately not wired into
-`PlanningEngine` in this phase — not silently dropped, but out of this
-phase's own stated scope. See this phase's deliverables notes.
+`PlanningEngine` — not silently dropped, but out of scope for both Phase 4
+and Phase 5. See each phase's own deliverables notes.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from planning.contract import Goal, Plan
 from planning.context import PlanningContext
 from planning.errors import PlannerStrategyError
+from planning.strategy import PlannerStrategy
 from planning.validation import validate_plan
-
-#: See this module's own docstring for why this is a Callable type alias
-#: rather than a formal class.
-PlannerStrategy = Callable[[Goal, PlanningContext], Plan]
 
 
 class PlanningEngine:
@@ -111,7 +101,7 @@ class PlanningEngine:
         """
 
         try:
-            candidate = strategy(goal, context)
+            candidate = strategy.create_plan(goal, context)
         except Exception as exc:
             raise PlannerStrategyError(f"PlannerStrategy raised while creating a plan: {exc}") from exc
 

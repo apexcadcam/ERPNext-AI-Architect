@@ -1,13 +1,15 @@
 """Tests for `PlanningEngine` (approved Sprint 4 Architecture Package
-§3.2/§4.1, scoped to this phase's own five-step Responsibilities list).
+§3.2/§4.1, scoped to Phase 4's own five-step Responsibilities list).
 
-No concrete `PlannerStrategy` implementation exists — every strategy used
-below is a plain stub callable, exactly matching `planning.engine.
-PlannerStrategy`'s `Callable[[Goal, PlanningContext], Plan]` type alias.
+Uses `_FunctionStrategy`, a minimal local test double wrapping a plain
+function into the permanent `PlannerStrategy` contract (Phase 5) — not
+`RuleBasedPlannerStrategy` itself, which has its own dedicated test module
+and its own "works through PlanningEngine" integration test there.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 
 import pytest
 from knowledge.graph import InMemoryGraphStore
@@ -17,7 +19,20 @@ from planning.contract import CapabilityDescriptor, Goal, Plan, PlanStep, Runtim
 from planning.context import PlanningContext
 from planning.engine import PlanningEngine
 from planning.errors import PlannerStrategyError, PlanValidationError
+from planning.strategy import PlannerStrategy
 from planning.validation import PlanValidationReport
+
+
+class _FunctionStrategy(PlannerStrategy):
+    """Wraps a plain function as a `PlannerStrategy`, so test bodies can
+    stay expressed as simple functions/lambdas rather than one-off classes.
+    """
+
+    def __init__(self, func: Callable[[Goal, PlanningContext], Plan]) -> None:
+        self._func = func
+
+    def create_plan(self, goal: Goal, context: PlanningContext) -> Plan:
+        return self._func(goal, context)
 
 
 @pytest.fixture
@@ -72,7 +87,7 @@ def test_create_plan_invokes_the_registered_strategy_with_goal_and_context(
         return _valid_plan()
 
     engine = PlanningEngine()
-    engine.register_strategy(stub_strategy)
+    engine.register_strategy(_FunctionStrategy(stub_strategy))
 
     engine.create_plan(goal, context)
 
@@ -82,7 +97,7 @@ def test_create_plan_invokes_the_registered_strategy_with_goal_and_context(
 def test_create_plan_returns_the_strategys_validated_plan(goal: Goal, context: PlanningContext) -> None:
     plan = _valid_plan()
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: plan)
+    engine.register_strategy(_FunctionStrategy(lambda g, c: plan))
 
     result = engine.create_plan(goal, context)
 
@@ -113,7 +128,7 @@ def test_orchestration_calls_strategy_before_validate_plan(
     monkeypatch.setattr("planning.engine.validate_plan", fake_validate_plan)
 
     engine = PlanningEngine()
-    engine.register_strategy(stub_strategy)
+    engine.register_strategy(_FunctionStrategy(stub_strategy))
     engine.create_plan(goal, context)
 
     assert call_order == ["strategy", "validate_plan"]
@@ -134,7 +149,7 @@ def test_validate_plan_is_invoked_exactly_once(
     monkeypatch.setattr("planning.engine.validate_plan", fake_validate_plan)
 
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: _valid_plan())
+    engine.register_strategy(_FunctionStrategy(lambda g, c: _valid_plan()))
     engine.create_plan(goal, context)
 
     assert calls == 1
@@ -154,9 +169,9 @@ def test_create_plan_raises_when_no_strategy_is_registered(goal: Goal, context: 
 
 def test_register_strategy_twice_without_override_raises() -> None:
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: _valid_plan())
+    engine.register_strategy(_FunctionStrategy(lambda g, c: _valid_plan()))
     with pytest.raises(PlannerStrategyError):
-        engine.register_strategy(lambda g, c: _valid_plan())
+        engine.register_strategy(_FunctionStrategy(lambda g, c: _valid_plan()))
 
 
 def test_register_strategy_with_override_replaces_the_active_strategy(
@@ -165,8 +180,8 @@ def test_register_strategy_with_override_replaces_the_active_strategy(
     first_plan = _valid_plan()
     second_plan = _valid_plan()
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: first_plan)
-    engine.register_strategy(lambda g, c: second_plan, override=True)
+    engine.register_strategy(_FunctionStrategy(lambda g, c: first_plan))
+    engine.register_strategy(_FunctionStrategy(lambda g, c: second_plan), override=True)
 
     result = engine.create_plan(goal, context)
 
@@ -181,7 +196,7 @@ def test_strategy_raising_is_wrapped_as_planner_strategy_error(goal: Goal, conte
         raise ValueError("no viable path found")
 
     engine = PlanningEngine()
-    engine.register_strategy(broken_strategy)
+    engine.register_strategy(_FunctionStrategy(broken_strategy))
 
     with pytest.raises(PlannerStrategyError) as excinfo:
         engine.create_plan(goal, context)
@@ -194,7 +209,7 @@ def test_strategy_returning_a_non_plan_raises_planner_strategy_error(
     goal: Goal, context: PlanningContext
 ) -> None:
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: "not a plan")  # type: ignore[arg-type, return-value]
+    engine.register_strategy(_FunctionStrategy(lambda g, c: "not a plan"))  # type: ignore[arg-type, return-value]
 
     with pytest.raises(PlannerStrategyError):
         engine.create_plan(goal, context)
@@ -204,7 +219,7 @@ def test_invalid_candidate_plan_raises_plan_validation_error_unwrapped(
     goal: Goal, context: PlanningContext
 ) -> None:
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: _invalid_plan())
+    engine.register_strategy(_FunctionStrategy(lambda g, c: _invalid_plan()))
 
     with pytest.raises(PlanValidationError):
         engine.create_plan(goal, context)
@@ -217,7 +232,7 @@ def test_create_plan_never_mutates_goal_or_context(goal: Goal, context: Planning
     goal_before = goal.model_copy(deep=True)
     context_before = context.model_copy(deep=True)
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: _valid_plan())
+    engine.register_strategy(_FunctionStrategy(lambda g, c: _valid_plan()))
 
     engine.create_plan(goal, context)
 
@@ -228,7 +243,7 @@ def test_create_plan_never_mutates_goal_or_context(goal: Goal, context: Planning
 
 def test_create_plan_never_touches_the_graph(goal: Goal, context: PlanningContext) -> None:
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: _valid_plan())
+    engine.register_strategy(_FunctionStrategy(lambda g, c: _valid_plan()))
 
     engine.create_plan(goal, context)
 
@@ -245,7 +260,7 @@ def test_create_plan_is_deterministic_for_a_deterministic_strategy(
 ) -> None:
     plan = _valid_plan()
     engine = PlanningEngine()
-    engine.register_strategy(lambda g, c: plan)
+    engine.register_strategy(_FunctionStrategy(lambda g, c: plan))
 
     first = engine.create_plan(goal, context)
     second = engine.create_plan(goal, context)
