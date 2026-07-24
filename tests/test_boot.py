@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,6 +12,27 @@ import yaml
 from runtime.boot import Runtime
 from runtime.errors import DependencyValidationError
 from runtime.lifecycle import RuntimeState
+from runtime.modules.base import Module
+
+#: A module whose own init() explicitly registers a specific value for one
+#: of its declared capabilities -- the exact shape IntegrationModule,
+#: ExtractorModule, and ValidatorModule already use in real, shipped code
+#: (Sprint 6 Architecture Package §4.2, ADR Candidate A).
+_SELF_REGISTERING_MODULE_PY = textwrap.dedent(
+    """
+    from runtime.modules.base import Module, HealthCheckResult
+
+    class _SelfRegisteringModule(Module):
+        def init(self, container):
+            container.register("demo.capability", lambda: "the-specific-value", override=True)
+
+        def health_check(self):
+            return HealthCheckResult(healthy=True, detail="self-registering test module")
+
+    def create(manifest):
+        return _SelfRegisteringModule(manifest)
+    """
+)
 
 
 def test_boot_with_zero_plugins_reaches_ready(config_dir: Path, plugins_dir: Path) -> None:
@@ -26,7 +48,9 @@ def test_boot_with_zero_plugins_reaches_ready(config_dir: Path, plugins_dir: Pat
     assert runtime.state is RuntimeState.STOPPED
 
 
-def test_boot_sequence_passes_through_every_documented_step_in_order(config_dir: Path, plugins_dir: Path) -> None:
+def test_boot_sequence_passes_through_every_documented_step_in_order(
+    config_dir: Path, plugins_dir: Path
+) -> None:
     runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
     runtime.boot()
 
@@ -115,7 +139,42 @@ def test_dependency_order_reflects_capability_wiring(
     runtime.shutdown()
 
 
-def test_shutdown_is_safe_to_call_on_an_already_booted_and_stopped_runtime(config_dir: Path, plugins_dir: Path) -> None:
+def test_a_modules_own_init_time_registration_survives_the_generic_fallback(
+    make_plugin: Callable[..., Path], config_dir: Path, plugins_dir: Path
+) -> None:
+    # ADR Candidate A (Sprint 6 Architecture Package §18): a module's own,
+    # more specific init()-time capability registration must survive
+    # _start_one_module()'s generic per-module fallback, which runs
+    # immediately afterward. Pre-fix, this fails -- the generic loop
+    # silently overwrites "demo.capability" with the module instance
+    # itself, discarding "the-specific-value".
+    make_plugin("demo", capabilities_provided=["demo.capability"], module_py=_SELF_REGISTERING_MODULE_PY)
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
+
+    runtime.boot()
+
+    assert runtime.container.resolve("demo.capability") == "the-specific-value"
+    runtime.shutdown()
+
+
+def test_a_module_that_never_self_registers_still_resolves_to_the_module_instance(
+    make_plugin: Callable[..., Path], config_dir: Path, plugins_dir: Path
+) -> None:
+    # The generic fallback's own, legitimate use case (tests/conftest.py's
+    # DEFAULT_MODULE_PY registers nothing itself) must be unchanged by ADR
+    # Candidate A's guard.
+    make_plugin("demo", capabilities_provided=["demo.capability"])
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
+
+    runtime.boot()
+
+    assert isinstance(runtime.container.resolve("demo.capability"), Module)
+    runtime.shutdown()
+
+
+def test_shutdown_is_safe_to_call_on_an_already_booted_and_stopped_runtime(
+    config_dir: Path, plugins_dir: Path
+) -> None:
     runtime = Runtime(config_dir=config_dir, plugin_search_paths=[plugins_dir])
     runtime.boot()
     runtime.shutdown()
