@@ -18,9 +18,11 @@ every method here is a plain, generic filesystem primitive.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from integration.contract import ConnectorManifest
+from integration.contract import ConnectorManifest, ConnectorRequest, ConnectorResponse
 from integration.errors import ConnectorLifecycleError
 from integration.lifecycle import ConnectorHealth, ConnectorLifecycle
 
@@ -88,6 +90,54 @@ class FilesystemConnector(ConnectorLifecycle):
         if not target.is_dir():
             raise NotADirectoryError(f"not a directory: '{path}'")
         return tuple(sorted(entry.name for entry in target.iterdir()))
+
+    # -- Invocation envelope (Sprint 5, Phase 1) --------------------------------
+
+    def invoke(self, request: ConnectorRequest) -> ConnectorResponse:
+        """Dispatches `request.operation` to the matching method above.
+        Mirrors Sprint 5 Architecture Package §9.1: an ordinary operational
+        failure (missing file, invalid path, bad parameters) becomes a
+        `status="failure"` response, never a raised exception; only a
+        `ConnectorLifecycleError` (not connected) propagates, since that is
+        a lifecycle-contract violation, not an operational outcome.
+        """
+
+        handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+            "filesystem.read_text": self._invoke_read_text,
+            "filesystem.write_text": self._invoke_write_text,
+            "filesystem.exists": self._invoke_exists,
+            "filesystem.list_directory": self._invoke_list_directory,
+        }
+        handler = handlers.get(request.operation)
+        if handler is None:
+            return ConnectorResponse(
+                status="failure",
+                diagnostics=f"unknown operation '{request.operation}'",
+                correlation_id=request.correlation_id,
+            )
+
+        try:
+            result = handler(request.parameters)
+        except ConnectorLifecycleError:
+            raise
+        except Exception as exc:
+            return ConnectorResponse(
+                status="failure", diagnostics=str(exc), correlation_id=request.correlation_id
+            )
+        return ConnectorResponse(status="success", result=result, correlation_id=request.correlation_id)
+
+    def _invoke_read_text(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        return {"content": self.read_text(parameters["path"])}
+
+    def _invoke_write_text(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        self.write_text(parameters["path"], parameters["content"])
+        return {}
+
+    def _invoke_exists(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        return {"exists": self.exists(parameters["path"])}
+
+    def _invoke_list_directory(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        return {"entries": self.list_directory(parameters.get("path", "."))}
 
     # -- internals ---------------------------------------------------------------
 

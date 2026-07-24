@@ -1,4 +1,5 @@
-"""Tests for the Connector Contract (SPRINT3_ARCHITECTURE_PACKAGE.md §6.1)."""
+"""Tests for the Connector Contract (SPRINT3_ARCHITECTURE_PACKAGE.md §6.1,
+§6.2's Request/Response Envelope — implemented Sprint 5, Phase 1)."""
 
 from __future__ import annotations
 
@@ -8,7 +9,14 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from integration import ConnectorManifest, ConnectorManifestError, ConnectorOperation, load_connector_manifest
+from integration import (
+    ConnectorManifest,
+    ConnectorManifestError,
+    ConnectorOperation,
+    ConnectorRequest,
+    ConnectorResponse,
+    load_connector_manifest,
+)
 
 
 def _minimal_manifest_kwargs(**overrides: object) -> dict[str, object]:
@@ -217,3 +225,63 @@ def test_load_connector_manifest_missing_required_field_raises(tmp_path: Path) -
 
     with pytest.raises(ConnectorManifestError):
         load_connector_manifest(manifest_path)
+
+
+# -- §6.2 Connector Request / Response Envelope (Sprint 5, Phase 1) -----------------
+
+
+def test_connector_request_constructs_with_defaults() -> None:
+    request = ConnectorRequest(
+        operation="filesystem.read_text", correlation_id="corr-1", requested_by="agent-1"
+    )
+    assert request.parameters == {}
+
+
+def test_connector_request_is_frozen() -> None:
+    request = ConnectorRequest(
+        operation="filesystem.read_text", correlation_id="corr-1", requested_by="agent-1"
+    )
+    with pytest.raises(ValidationError):
+        request.operation = "filesystem.write_text"
+
+
+def test_connector_request_empty_operation_raises() -> None:
+    with pytest.raises(ValidationError):
+        ConnectorRequest(operation="", correlation_id="corr-1", requested_by="agent-1")
+
+
+def test_connector_request_missing_required_field_raises() -> None:
+    with pytest.raises(ValidationError):
+        ConnectorRequest(operation="filesystem.read_text", correlation_id="corr-1")  # type: ignore[call-arg]
+
+
+def test_connector_response_constructs_with_defaults() -> None:
+    response = ConnectorResponse(status="success", correlation_id="corr-1")
+    assert response.result == {}
+    assert response.diagnostics == ""
+
+
+def test_connector_response_status_is_restricted_to_the_three_values() -> None:
+    with pytest.raises(ValidationError):
+        ConnectorResponse(status="pending", correlation_id="corr-1")  # type: ignore[arg-type]
+
+
+def test_connector_response_is_frozen() -> None:
+    response = ConnectorResponse(status="success", correlation_id="corr-1")
+    with pytest.raises(ValidationError):
+        response.status = "failure"
+
+
+def test_connector_request_and_response_serialization_round_trips() -> None:
+    request = ConnectorRequest(
+        operation="filesystem.write_text",
+        parameters={"path": "a.txt", "content": "hi"},
+        correlation_id="corr-1",
+        requested_by="agent-1",
+    )
+    restored = ConnectorRequest.model_validate_json(request.model_dump_json())
+    assert restored == request
+
+    response = ConnectorResponse(status="failure", diagnostics="boom", correlation_id="corr-1")
+    restored_response = ConnectorResponse.model_validate_json(response.model_dump_json())
+    assert restored_response == response

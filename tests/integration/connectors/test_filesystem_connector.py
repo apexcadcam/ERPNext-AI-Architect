@@ -1,7 +1,8 @@
-"""Tests for the Filesystem Connector (Sprint 3, Phase 4) — the
-architectural reference implementation of a concrete Connector, exercised
-directly against the Connector Contract (`integration.contract`) and
-Lifecycle (`integration.lifecycle`) it is built on.
+"""Tests for the Filesystem Connector (Sprint 3, Phase 4; `invoke()` added
+Sprint 5, Phase 1) — the architectural reference implementation of a
+concrete Connector, exercised directly against the Connector Contract
+(`integration.contract`) and Lifecycle (`integration.lifecycle`) it is
+built on.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from integration.connectors.filesystem.connector import FilesystemConnector, create
-from integration.contract import ConnectorManifest, ConnectorOperation
+from integration.contract import ConnectorManifest, ConnectorOperation, ConnectorRequest
 from integration.errors import ConnectorLifecycleError
 from integration.lifecycle import ConnectorLifecycle
 
@@ -225,3 +226,111 @@ def test_the_root_itself_is_a_valid_path_not_an_escape(
 ) -> None:
     (tmp_path / "child.txt").write_text("", encoding="utf-8")
     assert connected.list_directory(".") == ("child.txt",)
+
+
+# -- invoke() (Sprint 5, Phase 1) -------------------------------------------------------
+
+
+def _request(operation: str, **parameters: object) -> ConnectorRequest:
+    return ConnectorRequest(
+        operation=operation, parameters=parameters, correlation_id="corr-1", requested_by="test-suite"
+    )
+
+
+def test_invoke_read_text_success(connected: FilesystemConnector, tmp_path: Path) -> None:
+    (tmp_path / "greeting.txt").write_text("hello", encoding="utf-8")
+
+    response = connected.invoke(_request("filesystem.read_text", path="greeting.txt"))
+
+    assert response.status == "success"
+    assert response.result == {"content": "hello"}
+    assert response.correlation_id == "corr-1"
+
+
+def test_invoke_write_text_success(connected: FilesystemConnector, tmp_path: Path) -> None:
+    response = connected.invoke(_request("filesystem.write_text", path="new.txt", content="hi"))
+
+    assert response.status == "success"
+    assert response.result == {}
+    assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "hi"
+
+
+def test_invoke_exists_success_true(connected: FilesystemConnector, tmp_path: Path) -> None:
+    (tmp_path / "here.txt").write_text("x", encoding="utf-8")
+
+    response = connected.invoke(_request("filesystem.exists", path="here.txt"))
+
+    assert response.status == "success"
+    assert response.result == {"exists": True}
+
+
+def test_invoke_exists_success_false(connected: FilesystemConnector) -> None:
+    response = connected.invoke(_request("filesystem.exists", path="nowhere.txt"))
+
+    assert response.status == "success"
+    assert response.result == {"exists": False}
+
+
+def test_invoke_list_directory_success(connected: FilesystemConnector, tmp_path: Path) -> None:
+    (tmp_path / "b.txt").write_text("", encoding="utf-8")
+    (tmp_path / "a.txt").write_text("", encoding="utf-8")
+
+    response = connected.invoke(_request("filesystem.list_directory", path="."))
+
+    assert response.status == "success"
+    assert response.result == {"entries": ("a.txt", "b.txt")}
+
+
+def test_invoke_list_directory_defaults_path_to_root(connected: FilesystemConnector, tmp_path: Path) -> None:
+    (tmp_path / "only.txt").write_text("", encoding="utf-8")
+
+    response = connected.invoke(_request("filesystem.list_directory"))
+
+    assert response.status == "success"
+    assert response.result == {"entries": ("only.txt",)}
+
+
+def test_invoke_unknown_operation_returns_failure_not_raise(connected: FilesystemConnector) -> None:
+    response = connected.invoke(_request("filesystem.delete_everything"))
+
+    assert response.status == "failure"
+    assert "unknown operation" in response.diagnostics
+
+
+def test_invoke_missing_file_returns_failure_not_raise(connected: FilesystemConnector) -> None:
+    response = connected.invoke(_request("filesystem.read_text", path="nope.txt"))
+
+    assert response.status == "failure"
+    assert response.diagnostics
+
+
+def test_invoke_missing_required_parameter_returns_failure_not_raise(connected: FilesystemConnector) -> None:
+    response = connected.invoke(_request("filesystem.read_text"))  # no "path"
+
+    assert response.status == "failure"
+    assert response.diagnostics
+
+
+def test_invoke_path_escape_returns_failure_not_raise(connected: FilesystemConnector) -> None:
+    response = connected.invoke(_request("filesystem.read_text", path="../outside.txt"))
+
+    assert response.status == "failure"
+    assert "escapes" in response.diagnostics
+
+
+def test_invoke_before_connect_raises_connector_lifecycle_error(tmp_path: Path) -> None:
+    connector = FilesystemConnector(_manifest(tmp_path))
+    with pytest.raises(ConnectorLifecycleError):
+        connector.invoke(_request("filesystem.read_text", path="x.txt"))
+
+
+def test_invoke_response_always_carries_the_requests_correlation_id(connected: FilesystemConnector) -> None:
+    request = ConnectorRequest(
+        operation="filesystem.exists",
+        parameters={"path": "x"},
+        correlation_id="a-specific-correlation-id",
+        requested_by="test-suite",
+    )
+    response = connected.invoke(request)
+
+    assert response.correlation_id == "a-specific-correlation-id"
