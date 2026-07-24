@@ -1,9 +1,10 @@
-"""The Planning Engine — Sprint 4, Phases 1-2.
+"""The Planning Engine — Sprint 4, Phases 1-3.
 
 Implements the approved Sprint 4 Architecture Package's foundational data
-models, error hierarchy, event-type identifiers (Phase 1), and read-only
-input surface — `GraphReader` and `PlanningContext` (Phase 2). `PlanningEngine`,
-`PlannerStrategy`, `CapabilityResolver`, `validate_plan`, and the Runtime
+models, error hierarchy, event-type identifiers (Phase 1), read-only input
+surface — `GraphReader` and `PlanningContext` (Phase 2) — and Plan
+Validation — `validate_plan`/`PlanValidationReport` (Phase 3).
+`PlanningEngine`, `PlannerStrategy`, `CapabilityResolver`, and the Runtime
 module wrapper (`plugins/planning/`) are all later-phase scope — none of
 them exist yet, and nothing in this package imports `integration/` or
 `secrets_management/`.
@@ -23,6 +24,7 @@ from planning.errors import (
 )
 from planning.events import PLAN_CREATED, PLAN_VALIDATION_FAILED, PLANNING_FAILED, PLANNING_STARTED
 from planning.graph_reader import GraphReader
+from planning.validation import PlanValidationReport, validate_plan
 
 __all__ = [
     "PLANNING_STARTED",
@@ -37,9 +39,11 @@ __all__ = [
     "Plan",
     "PlanStep",
     "PlanValidationError",
+    "PlanValidationReport",
     "PlanningContext",
     "PlanningContextError",
     "PlanningError_",
     "PlannerStrategyError",
     "RuntimeContextInfo",
+    "validate_plan",
 ]
