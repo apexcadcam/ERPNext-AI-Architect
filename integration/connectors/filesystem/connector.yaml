@@ -1,0 +1,50 @@
+# The Filesystem Connector — Sprint 3, Phase 4.
+#
+# The architectural reference implementation of a concrete Connector,
+# proving the Phase 3 framework (Connector Contract + Lifecycle + Registry)
+# end to end. Deliberately minimal: four operations only, matching
+# SPRINT3_ARCHITECTURE_PACKAGE.md §6.3's own worked example
+# ("filesystem.write_file").
+#
+# endpoint_reference is this connector's configured root — every operation
+# is resolved relative to it (see connector.py). "." is a placeholder for
+# this shipped manifest; a real deployment sets it to a real, intentional
+# root directory before this connector is registered.
+
+connector_id: filesystem
+display_name: Filesystem
+maintained_by: integration-layer
+target_system_type: filesystem
+version: 0.1.0
+
+auth_required: false
+auth_method: none
+
+endpoint_kind: local_path
+endpoint_reference: "."
+
+operations:
+  - name: filesystem.read_text
+    kind: read
+    idempotent: true
+    confirmation_scope: never-required
+  - name: filesystem.write_text
+    # Not idempotent: participates in the Contract's existing §6.1
+    # declaration-8 default (write + non-idempotent -> requires_confirmation
+    # true) rather than an explicit override — this is a destructive
+    # operation (it can irreversibly overwrite existing file content).
+    kind: write
+    idempotent: false
+    confirmation_scope: per-call
+  - name: filesystem.exists
+    kind: read
+    idempotent: true
+    confirmation_scope: never-required
+  - name: filesystem.list_directory
+    kind: read
+    idempotent: true
+    confirmation_scope: never-required
+
+max_attempts: 1
+
+entry_point: "connector:create"
