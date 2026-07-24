@@ -1,0 +1,38 @@
+# ADR-0009: Defer the Connector Invocation Layer and the Dependency-Injection Seam Until Before the Next Connector
+
+**Date:** 2026-07-24
+**Status:** Accepted
+
+## Context
+
+An Architecture Audit was run against Sprint 3's Integration Layer (Secrets Resolver, Profile Convention, Integration Module, Connector Registry, Connector Contract, Connector Lifecycle, Connector Discovery, Filesystem Connector) before Phase 5, and separately confirmed by Phase 6's own cross-layer/architecture-boundary/contract-stability/smoke tests. The audit approved proceeding to Phase 5 (Knowledge Graph) — confirmed structurally decoupled from the Integration Layer — but found two **Critical** and three **Major** risks in the Integration Layer itself, none of which were fixed, per every phase's own "no redesign, no framework modifications" constraint. This ADR is the permanent record those constraints implicitly deferred creating.
+
+**C1 — No generic invocation layer exists.** `SPRINT3_ARCHITECTURE_PACKAGE.md §6.2` describes a `ConnectorRequest`/`ConnectorResponse` envelope as "the one fixed shape every operation is invoked through," and `§6.3` describes capability resolution as answering how a caller reaches a connector operation. Neither type exists anywhere in `integration/`, and `ConnectorLifecycle` (`integration/lifecycle.py`) has no `invoke()` method. Capability resolution today only answers "who provides this capability" (`ConnectorRegistry.capability_providers()`) — never "how do I call it." `FilesystemConnector.write_text(path, content)` (`integration/connectors/filesystem/connector.py`) is a plain, connector-specific Python method; the only thing connecting it to the Operation Catalog entry `filesystem.write_text` is that the names happen to match, a convention nothing in the Contract enforces. None of the six Migration Strategy phases in `SPRINT3_ARCHITECTURE_PACKAGE.md §18` explicitly schedule building this layer.
+
+**C2 — No seam exists to inject shared runtime services into a dynamically-instantiated connector.** `ConnectorRegistry.instantiate()` (`integration/registry.py`) calls `factory(connector.manifest)` — one argument, mirroring `IntegrationModule.__init__(self, manifest)`'s equally single-argument shape (`Module`'s frozen Sprint 1 contract). `credential_reference` sits on `ConnectorManifest` as a string pointer, but nothing gives a connector's `connect()` a `SecretsResolver` instance to resolve it with.
+
+Phase 6's smoke tests (`tests/sprint3/test_smoke.py`) independently, concretely reproduced the same root cause one level up: `Runtime.boot()` has no mechanism to set `IntegrationModule.connector_search_paths` before `init()` runs, so booting the real Runtime against the real `plugins/` directory starts the Integration module healthy but with **zero connectors discovered**, even though the Filesystem Connector genuinely exists on disk under `integration/connectors/filesystem/`. This is not hypothetical — it is the actual, current behavior of `Runtime.boot()` today, and it is the same "manifest-only dynamic construction has no injection seam" defect as C2, surfacing in a second place. Fixing it inside `Runtime` would require either special-casing a module by name (forbidden by `docs/runtime/MODULE_SYSTEM.md §1`: "the Runtime never special-cases any module by name") or building the seam C2 already names — so it was left unfixed and is folded into this same ADR rather than treated as a separate, unrelated bug.
+
+Two related, lower-severity findings share the same root cause and are recorded here for the same reason:
+
+- **M1** — `ConnectorManifest`/`ConnectorRegistry.validate()` has no `enabled`/`disabled` concept, unlike the `PluginRegistry` it is meant to mirror ("the same fractal shape at the layer above," `§5.4`) — `PluginRegistry`'s ambiguous-capability check is scoped to *enabled* modules only; `ConnectorRegistry`'s is not, contradicting `§6.3`'s own "whichever enabled connector currently provides it" language.
+- **M3** — `ConnectorInvoked`/`ConnectorSucceeded`/`ConnectorFailed` (`§14` item 7, stated as an unconditional security control) have no implementation or event-publishing code anywhere — a direct consequence of C1: there is no invocation path to publish these events from yet.
+
+(The audit's remaining Major finding, M2 — Connector manifests not wired to the Configuration System's sixth layer — and its five Minor findings remain logged in the audit conversation and are not restated here in full; they do not share C1/C2's root cause and do not block the same follow-up work.)
+
+## Decision
+
+1. C1 and C2 (and their consequences M1/M3) are **not fixed** by Sprint 3. They were deliberately out of scope for every phase's own "no redesign" constraint, and Phase 6's explicit instruction not to introduce audit-identified improvements now.
+2. They are recorded here, permanently, as a **precondition** — not merely a suggestion — for implementing any connector that needs one of: authentication (ERPNext, GitHub, PostgreSQL — three of the six remaining connectors named in `SPRINT3_ARCHITECTURE_PACKAGE.md`'s original seven), a session/streaming protocol (MCP), or more than one simultaneously-active instance of the same connector kind. A dedicated design pass must resolve, before that work starts:
+   - The shape of the `ConnectorRequest`/`ConnectorResponse` envelope and an `invoke()` (or equivalent) dispatch method on `ConnectorLifecycle` (C1).
+   - How a connector's `connect()` obtains a `SecretsResolver` and any other shared runtime service, without breaking the single-argument `factory(manifest)` shape every already-shipped connector (Filesystem, frozen) currently relies on — or, if that shape must change, how that change is applied without a silent breaking edit to a frozen Contract (C2).
+   - How `Runtime.boot()` (or a documented, generic, non-name-special-casing caller-side wiring convention) populates `IntegrationModule.connector_search_paths`, so a real boot of the real Runtime actually discovers real connectors.
+   - Where `ConnectorInvoked`/`ConnectorSucceeded`/`ConnectorFailed` are published from, tied to the C1 decision (M3).
+   - Whether an enabled/disabled concept is added to `ConnectorManifest`/`ConnectorRegistry`, if interchangeable multi-instance connectors are still an intended pattern (M1).
+3. Nothing about this decision authorizes redesigning `integration/contract.py`, `integration/lifecycle.py`, or `integration/registry.py` today. It authorizes only that the next connector requiring any of the above must trigger the design pass in (2) first, rather than each connector author independently inventing an ad hoc workaround.
+
+## Consequences
+
+- **Accepted:** Sprint 3 ships with `Runtime.boot()` starting Integration Module healthy but connector-less in practice, and with no way for a caller to genuinely invoke a connector operation generically. `tests/sprint3/test_smoke.py` proves the Integration Module + Filesystem Connector wiring by direct construction (mirroring the pattern `tests/integration/test_module.py` already established), not through `Runtime.boot()`, and documents why inline.
+- **Not blocking:** confirmed via `tests/sprint3/test_architecture_boundaries.py` that `knowledge.graph` has zero coupling to `integration/` — this technical debt does not block Knowledge Graph work (Phase 5) or any future Knowledge Factory work.
+- **Required follow-up:** the design pass named in Decision (2) is a prerequisite for Sprint 3's own remaining Migration Strategy step 6 ("Remaining Connectors: ERPNext, GitHub, PostgreSQL, Docker, MCP, Playwright") — it should happen once, deliberately, rather than be rediscovered independently by whichever connector is implemented first.
