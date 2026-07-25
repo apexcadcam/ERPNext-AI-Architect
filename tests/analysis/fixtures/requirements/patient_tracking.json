@@ -1,0 +1,51 @@
+{
+  "requirement_id": "REQ-1",
+  "description": "Track patient identity, appointments, and billing for the clinic.",
+  "entities": [
+    {
+      "name": "Patient",
+      "excerpt": "we need to track patient identity",
+      "attributes": ["date_of_birth", "medical_record_number"]
+    },
+    {
+      "name": "Appointment",
+      "excerpt": "patients schedule appointments with a doctor",
+      "attributes": ["scheduled_time"]
+    },
+    {
+      "name": "Invoice",
+      "excerpt": "an invoice is issued once the appointment is confirmed",
+      "attributes": []
+    }
+  ],
+  "processes": [
+    {
+      "name": "Patient Registration",
+      "excerpt": "the receptionist registers a new patient before their first visit",
+      "steps": ["collect identity", "assign medical record number", "confirm insurance"],
+      "actors": ["Receptionist"]
+    },
+    {
+      "name": "Appointment Scheduling",
+      "excerpt": "the receptionist schedules an appointment with the requested doctor",
+      "steps": ["select doctor", "select time slot", "confirm with patient"],
+      "actors": ["Receptionist", "Doctor"]
+    }
+  ],
+  "actors": [
+    { "name": "Receptionist", "excerpt": "the receptionist registers a new patient" },
+    { "name": "Doctor", "excerpt": "an appointment with the requested doctor" }
+  ],
+  "rules": [
+    {
+      "statement": "An invoice cannot be issued without a confirmed appointment",
+      "excerpt": "an invoice is issued once the appointment is confirmed"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Only one active prescription per patient at a time",
+      "excerpt": "a patient may not hold two active prescriptions simultaneously"
+    }
+  ]
+}
