@@ -1,0 +1,24 @@
+module_id: orchestration
+display_name: Orchestration
+maintained_by: orchestration
+version: 0.1.0
+
+capabilities_provided:
+  - orchestration.goal_runner
+capabilities_required:
+  - integration.connector_registry
+  - planning.engine
+  - execution.engine
+
+pipeline_stage_bindings: []
+
+# GoalOrchestrator publishes no events of its own -- execution/events.py's
+# own nine identifiers, threaded through whichever ExecutionContext.event_bus
+# a caller supplies to run_goal(), already let a subscriber reconstruct one
+# Goal's full execution lifecycle (Sprint 7 Architecture Package Sec1's own
+# Non-Goal on new event identifiers).
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"
