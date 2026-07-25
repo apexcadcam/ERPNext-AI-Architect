@@ -1,0 +1,18 @@
+[
+  {
+    "entity_id": "doctype:Customer",
+    "name": "Customer",
+    "description": "A party that buys goods or services from the organization.",
+    "attributes": ["Customer Name"],
+    "supporting_evidence": [
+      { "source_reference": "doctype:Customer", "excerpt": "DocType 'Customer'", "rationale": "extracted from ERPNext doctype metadata" }
+    ]
+  },
+  {
+    "entity_id": "doctype:Contact",
+    "name": "Contact",
+    "supporting_evidence": [
+      { "source_reference": "doctype:Contact", "excerpt": "DocType 'Contact'", "rationale": "extracted from ERPNext doctype metadata" }
+    ]
+  }
+]
