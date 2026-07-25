@@ -4,26 +4,30 @@ Lightweight, no planner, no ERPNext, no external APIs — proving the pieces
 Sprint 3 actually shipped start up cleanly together.
 
 One honest limitation, discovered during this validation and deliberately
-*not* patched (see the Phase 6 deliverables report — fixing it would touch
-`runtime/boot.py`, and would require either special-casing a module by name
-there, which `docs/runtime/MODULE_SYSTEM.md §1` forbids, or the dependency-
-injection seam the Architecture Audit already named as future work, C2):
-`Runtime.boot()` has no mechanism to set `IntegrationModule.
-connector_search_paths` before `init()` runs, so booting the real Runtime
-against the real `plugins/` directory starts the Integration module
-healthy but with zero connectors discovered — `connector_search_paths`
-defaults to `[]` and nothing in `runtime/` ever populates it. The two
-halves below are therefore proven separately, exactly as Phases 3/4's own
-tests already do: `Runtime.boot()` for the generic module lifecycle, and
-`IntegrationModule` constructed and wired directly (mirroring
-`tests/integration/test_module.py`'s own established pattern) for the
-connector-discovery half.
+*not* patched at the time (see the Phase 6 deliverables report — fixing it
+would touch `runtime/boot.py`, and would require either special-casing a
+module by name there, which `docs/runtime/MODULE_SYSTEM.md §1` forbids, or
+the dependency-injection seam the Architecture Audit already named as
+future work, C2): as of Sprint 3, `Runtime.boot()` had no mechanism to set
+`IntegrationModule.connector_search_paths` before `init()` runs, so
+booting the real Runtime against the real `plugins/` directory started the
+Integration module healthy but with zero connectors discovered.
+
+**Closed in Sprint 6 Phase 3**, generically, via the `"runtime.config"`
+capability (Sprint 6 Architecture Package §7.3) — no special-casing of
+Integration by name anywhere in `runtime/boot.py`, exactly as this
+docstring's own original constraint required.
+`test_runtime_boot_with_configured_search_paths_discovers_real_connectors`
+below is the closing proof; the original test immediately below it is
+kept unmodified, since it still validates something distinct (the generic
+module lifecycle with no connector configuration at all).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
 from knowledge.artifacts import DependencyEdge
 from knowledge.graph import GraphBuilder, InMemoryGraphStore
 
@@ -54,6 +58,27 @@ def test_runtime_starts_and_integration_module_initializes_healthy(config_dir: P
 
     runtime.shutdown()
     assert runtime.state is RuntimeState.STOPPED
+
+
+def test_runtime_boot_with_configured_search_paths_discovers_real_connectors(config_dir: Path) -> None:
+    # Closes this file's own, long-disclosed limitation (module docstring):
+    # a real Runtime.boot() against the real plugins/ directory now
+    # discovers real connectors with no manual connector_search_paths
+    # assignment anywhere -- entirely through modules/integration.yaml and
+    # the "runtime.config" capability (Sprint 6 Phase 3).
+    disable_modules(config_dir, "extractor", "validator")
+    (config_dir / "modules" / "integration.yaml").write_text(
+        yaml.safe_dump({"connector_search_paths": [str(CONNECTORS_DIR)]}), encoding="utf-8"
+    )
+    runtime = Runtime(config_dir=config_dir, plugin_search_paths=[PLUGINS_DIR])
+
+    info = runtime.boot()
+
+    assert info.state is RuntimeState.READY
+    registry = runtime.container.resolve(CAPABILITY_CONNECTOR_REGISTRY)
+    assert registry.get("filesystem") is not None
+
+    runtime.shutdown()
 
 
 def test_integration_module_discovers_and_registers_the_filesystem_connector() -> None:

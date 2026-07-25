@@ -90,16 +90,23 @@ def _references_connector_registry(py_file: Path) -> bool:
     return False
 
 
-def test_connector_registry_is_only_imported_by_the_two_modules_that_legitimately_need_it() -> None:
+def test_connector_registry_is_only_imported_by_the_modules_that_legitimately_need_it() -> None:
     # retry.py resolves classification (§17); connector_invoker.py wraps
     # the registry itself (§9.3) -- ExecutionEngine touches neither
-    # directly, only through the narrow ConnectorInvoker/RetryPolicy seams.
+    # directly, only through the narrow ConnectorInvoker/RetryPolicy seams
+    # (test_engine_source_never_references_connector_registry, above,
+    # still proves this). module.py (Sprint 6 Architecture Package §6.2,
+    # §7.2) is a third, legitimate consumer, added after Sprint 5's own
+    # release: ADR-0014 requires ExecutionModule to resolve
+    # integration.connector_registry itself, to construct the RetryPolicy
+    # it hands to ExecutionEngine -- the identical reasoning already
+    # justifying retry.py's own need, one layer up.
     importers = {
         py_file.name
         for py_file in sorted(EXECUTION_DIR.glob("*.py"))
         if _references_connector_registry(py_file)
     }
-    assert importers == {"retry.py", "connector_invoker.py"}
+    assert importers == {"retry.py", "connector_invoker.py", "module.py"}
 
 
 # -- 2. A step not requiring confirmation never consults ConfirmationProvider -------------

@@ -1,0 +1,21 @@
+module_id: execution
+display_name: Execution
+maintained_by: execution-engine
+version: 0.1.0
+
+capabilities_provided:
+  - execution.engine
+capabilities_required:
+  - integration.connector_registry
+
+pipeline_stage_bindings: []
+
+# execution/events.py's own nine identifiers are not published from this
+# module -- publication happens inside ExecutionEngine.execute() itself,
+# via the per-call ExecutionContext.event_bus field (ADR Candidate C), not
+# from anything this module's own init()/health_check() does.
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"

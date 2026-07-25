@@ -36,7 +36,13 @@ from runtime.config.loader import ConfigLoader, ResolvedConfig
 from runtime.container.di import Container
 from runtime.errors import DependencyValidationError, ModuleLifecycleError
 from runtime.events.bus import EventBus
-from runtime.lifecycle import ModuleState, RuntimeState, StateMachine, new_module_lifecycle, new_runtime_lifecycle
+from runtime.lifecycle import (
+    ModuleState,
+    RuntimeState,
+    StateMachine,
+    new_module_lifecycle,
+    new_runtime_lifecycle,
+)
 from runtime.modules.base import HealthCheckResult, Module
 from runtime.observability.logging import configure_logging, get_logger
 from runtime.pipeline.engine import PipelineEngine
@@ -88,6 +94,19 @@ class Runtime:
         self.event_bus = EventBus()
         self.pipeline_engine = PipelineEngine(self.container, self.event_bus)
 
+        # Well-known, Container-resolvable Runtime infrastructure capabilities
+        # (Sprint 6 Architecture Package §18, ADR Candidate B) — registered
+        # unconditionally, here at construction, so every module can resolve
+        # either from its very first init() call onward, regardless of
+        # whether boot() has run yet. Neither appears in any module's own
+        # capabilities_provided/capabilities_required (§11): both are Runtime
+        # infrastructure, not a contingent, module-provided capability.
+        # "runtime.event_bus" is already referenced, defensively, by
+        # knowledge/extraction/module.py and knowledge/validation/module.py —
+        # this is the first place anything actually registers it.
+        self.container.register("runtime.event_bus", lambda: self.event_bus)
+        self.container.register("runtime.config", lambda: self.config_loader)
+
         self._lifecycle = new_runtime_lifecycle()
         self._module_records: dict[str, ModuleRuntimeRecord] = {}
         self._resolved_config: ResolvedConfig | None = None
@@ -121,7 +140,8 @@ class Runtime:
             self._lifecycle.transition(RuntimeState.CONFIG_LOADING)
             self._resolved_config = self.config_loader.resolve()
             configure_logging(
-                level=str(self._resolved_config["log_level"]), log_format=str(self._resolved_config["log_format"])
+                level=str(self._resolved_config["log_level"]),
+                log_format=str(self._resolved_config["log_format"]),
             )
             self._apply_module_enablement_overrides()
             try:
@@ -194,10 +214,18 @@ class Runtime:
 
             for capability in instance.manifest.capabilities_provided:
                 # Each module provides itself as the resolvable object for
-                # its own declared capabilities — a more granular per-method
-                # capability mapping is Sprint 2 scope (see IMPLEMENTATION
-                # summary); this is enough to prove the wiring end to end.
-                self.container.register(capability, _provide, override=True)
+                # any of its own declared capabilities it did not already
+                # register something more specific for inside its own
+                # init() (e.g. IntegrationModule registering the live
+                # ConnectorRegistry it hosts, not itself) — a more granular
+                # per-method capability mapping is Sprint 2 scope (see
+                # IMPLEMENTATION summary); this generic fallback is enough
+                # to prove the wiring end to end for a module with nothing
+                # more specific to offer. Sprint 6 Architecture Package
+                # §18, ADR Candidate A: a module's own, more specific
+                # registration must never be silently overwritten here.
+                if not self.container.is_registered(capability):
+                    self.container.register(capability, _provide)
 
             instance.start()
             lifecycle.transition(ModuleState.STARTED)
@@ -209,7 +237,8 @@ class Runtime:
             raise ModuleLifecycleError(f"module '{module_id}' failed to start: {exc}") from exc
 
         logger.info(
-            "module started", extra={"module_id": module_id, "healthy": health.healthy, "detail": health.detail}
+            "module started",
+            extra={"module_id": module_id, "healthy": health.healthy, "detail": health.detail},
         )
         return ModuleRuntimeRecord(module_id=module_id, instance=instance, state=lifecycle, health=health)
 
@@ -257,4 +286,6 @@ class Runtime:
         )
 
     def all_healthy(self) -> bool:
-        return all(record.health is not None and record.health.healthy for record in self._module_records.values())
+        return all(
+            record.health is not None and record.health.healthy for record in self._module_records.values()
+        )

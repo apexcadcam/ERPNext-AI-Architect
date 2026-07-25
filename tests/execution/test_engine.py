@@ -14,6 +14,7 @@ validation strategy for this phase.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ import yaml
 from integration.contract import ConnectorResponse
 from integration.registry import ConnectorRegistry, DiscoveredConnector
 from planning.contract import Plan, PlanStep, RuntimeContextInfo
+from runtime.events.bus import Event, EventBus, EventBusBackpressureError
 
 from execution.cancellation import CancellationToken
 from execution.confirmation import ConfirmationProvider, DenyAllConfirmationProvider
@@ -29,6 +31,17 @@ from execution.context import ExecutionContext
 from execution.contract import ExecutionRun, RollbackOutcome, StepExecutionRecord
 from execution.engine import ExecutionEngine
 from execution.errors import PlanNotExecutableError
+from execution.events import (
+    EXECUTION_CANCELLED,
+    EXECUTION_COMPLETED,
+    EXECUTION_FAILED,
+    EXECUTION_STARTED,
+    STEP_AWAITING_CONFIRMATION,
+    STEP_FAILED,
+    STEP_SKIPPED,
+    STEP_STARTED,
+    STEP_SUCCEEDED,
+)
 from execution.lifecycle import ExecutionRunState, StepExecutionState
 from execution.retry import RetryPolicy
 from execution.rollback import RollbackStrategy, UnsupportedRollbackStrategy
@@ -115,6 +128,7 @@ def _context(
     *,
     invoker: Any,
     confirmation_provider: ConfirmationProvider | None = None,
+    event_bus: Any = None,
 ) -> ExecutionContext:
     return ExecutionContext(
         connector_invoker=invoker,
@@ -122,6 +136,7 @@ def _context(
         runtime_context=RuntimeContextInfo(environment="Development", requested_by="test-suite"),
         correlation_id="corr-1",
         cancellation_token=CancellationToken(),
+        event_bus=event_bus,
     )
 
 
@@ -663,3 +678,201 @@ def test_rollback_never_silently_promotes_an_unsupported_step_to_rolled_back(tmp
     record = result.step_records[0]
     assert record.state is StepExecutionState.FAILED  # never promoted -- rollback was refused
     assert record.rollback_outcome == RollbackOutcome(supported=False, detail="cannot undo a write")
+
+
+# -- Event publication (Sprint 6 Architecture Package §18, ADR Candidate C) ---------------
+
+
+class _RecordingEventBus(EventBus):
+    """A real `EventBus` subclass (`ExecutionContext.event_bus` is typed
+    as the concrete class, validated by `isinstance`, per ADR Candidate
+    C's own "not a narrowed interface" text) whose `publish()` is
+    overridden to record rather than actually deliver -- `ExecutionEngine`
+    must never call anything else on it (see the AST test below).
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.published: list[Event] = []
+
+    def publish(self, event: Event) -> int:
+        self.published.append(event)
+        return 0
+
+
+class _AlwaysRaisesEventBus(EventBus):
+    """A deterministic stand-in for `EventBus.publish()`'s own possible
+    `EventBusBackpressureError` -- proves `ExecutionEngine`'s own guard
+    swallows *any* publish() exception, without the timing-dependent
+    flakiness a real, BLOCK-policy-queue-kept-full scenario would
+    introduce for the identical guarantee.
+    """
+
+    def publish(self, event: Event) -> int:
+        raise EventBusBackpressureError("queue full")
+
+
+def test_publishes_execution_started_step_started_step_succeeded_and_execution_completed(
+    tmp_path: Path,
+) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    bus = _RecordingEventBus()
+    context = _context(invoker=invoker, event_bus=bus)
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    events = {e.event_type: e for e in bus.published}
+    assert set(events) == {EXECUTION_STARTED, STEP_STARTED, STEP_SUCCEEDED, EXECUTION_COMPLETED}
+    assert events[EXECUTION_STARTED].payload == {
+        "execution_run_id": result.execution_run_id,
+        "plan_id": "P-1",
+        "goal_id": "G-1",
+    }
+    assert events[STEP_STARTED].payload == {
+        "execution_run_id": result.execution_run_id,
+        "step_id": "S-1",
+        "attempt": 1,
+    }
+    assert events[STEP_SUCCEEDED].payload == {"execution_run_id": result.execution_run_id, "step_id": "S-1"}
+    assert events[EXECUTION_COMPLETED].payload == {
+        "execution_run_id": result.execution_run_id,
+        "final_state": "completed",
+    }
+    assert all(e.correlation_id == "corr-1" for e in bus.published)
+    assert all(e.emitted_by == "execution" for e in bus.published)
+
+
+def test_publishes_step_failed_and_execution_failed_with_failed_step_ids(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE]})
+    bus = _RecordingEventBus()
+    context = _context(invoker=invoker, event_bus=bus)
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    events = {e.event_type: e for e in bus.published}
+    assert events[STEP_FAILED].payload == {
+        "execution_run_id": result.execution_run_id,
+        "step_id": "S-1",
+        "detail": "boom",
+    }
+    assert events[EXECUTION_FAILED].payload == {
+        "execution_run_id": result.execution_run_id,
+        "failed_step_ids": ("S-1",),
+    }
+    assert EXECUTION_COMPLETED not in events
+    assert STEP_SUCCEEDED not in events
+
+
+def test_publishes_step_skipped_for_an_unmet_dependency(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_FAILURE]})
+    bus = _RecordingEventBus()
+    context = _context(invoker=invoker, event_bus=bus)
+    plan = _plan((_step("S-1", "a.op"), _step("S-2", "a.op", depends_on=("S-1",))))
+
+    engine.execute(plan, context)
+
+    skipped = [e for e in bus.published if e.event_type == STEP_SKIPPED]
+    assert len(skipped) == 1
+    assert skipped[0].payload["step_id"] == "S-2"
+    assert skipped[0].payload["reason"] == "an upstream dependency did not succeed"
+
+
+def test_publishes_step_awaiting_confirmation_then_skipped_for_a_denied_confirmation(
+    tmp_path: Path,
+) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "write", "idempotent": False}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    bus = _RecordingEventBus()
+    context = _context(invoker=invoker, confirmation_provider=DenyAllConfirmationProvider(), event_bus=bus)
+    plan = _plan((_step("S-1", "a.op", requires_confirmation=True),))
+
+    engine.execute(plan, context)
+
+    relevant = [e for e in bus.published if e.event_type in (STEP_AWAITING_CONFIRMATION, STEP_SKIPPED)]
+    assert [e.event_type for e in relevant] == [STEP_AWAITING_CONFIRMATION, STEP_SKIPPED]
+    assert relevant[0].payload["capability"] == "a.op"
+    assert relevant[1].payload["reason"] == "confirmation denied"
+    assert invoker.calls == []  # never invoked -- denial short-circuits before invocation
+
+
+def test_never_publishes_step_awaiting_confirmation_when_not_required(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    bus = _RecordingEventBus()
+    context = _context(invoker=invoker, event_bus=bus)
+
+    engine.execute(_plan((_step("S-1", "a.op", requires_confirmation=False),)), context)
+
+    assert STEP_AWAITING_CONFIRMATION not in {e.event_type for e in bus.published}
+
+
+def test_publishes_execution_cancelled_and_step_skipped_for_cancellation(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    bus = _RecordingEventBus()
+    context = _context(invoker=invoker, event_bus=bus)
+    context.cancellation_token.request_cancellation()
+
+    engine.execute(_plan((_step("S-1", "a.op"),)), context)
+
+    event_types = {e.event_type for e in bus.published}
+    assert EXECUTION_CANCELLED in event_types
+    assert EXECUTION_COMPLETED not in event_types
+    assert EXECUTION_FAILED not in event_types
+    skipped = [e for e in bus.published if e.event_type == STEP_SKIPPED]
+    assert skipped[0].payload["reason"] == "the run was already cancelled"
+
+
+def test_no_event_bus_publishes_nothing_and_behaves_identically(tmp_path: Path) -> None:
+    # context.event_bus is None (the default, every pre-Sprint-6 caller) --
+    # must be indistinguishable from Phase 5/6 behavior.
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    context = _context(invoker=invoker)
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)  # must not raise
+
+    assert context.event_bus is None
+    assert result.final_state is ExecutionRunState.COMPLETED
+
+
+def test_a_publishing_failure_never_escapes_execute(tmp_path: Path) -> None:
+    registry = _registry(tmp_path, [{"name": "a.op", "kind": "read", "idempotent": True}])
+    engine = ExecutionEngine(RetryPolicy(registry))
+    invoker = _ScriptedConnectorInvoker({"a.op": [_SUCCESS]})
+    context = _context(invoker=invoker, event_bus=_AlwaysRaisesEventBus())
+
+    result = engine.execute(_plan((_step("S-1", "a.op"),)), context)  # must not raise
+
+    assert result.final_state is ExecutionRunState.COMPLETED
+    assert result.step_records[0].state is StepExecutionState.SUCCEEDED
+
+
+def test_engine_source_only_ever_calls_publish_on_event_bus() -> None:
+    # Sprint 6 Architecture Review 3's own documentation recommendation:
+    # ExecutionEngine treats context.event_bus as publish-only, even though
+    # the concrete EventBus type exposes subscribe()/unsubscribe()/stats()/
+    # shutdown() too. A real AST check, not a convention taken on faith.
+    source = Path(__file__).resolve().parents[2] / "execution" / "engine.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+
+    violations = [
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "event_bus"
+        and node.attr != "publish"
+    ]
+
+    assert violations == []

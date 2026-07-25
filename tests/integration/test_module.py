@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import yaml
+
 from integration import CAPABILITY_CONNECTOR_REGISTRY, ConnectorRegistry, IntegrationModule
+from runtime.config.loader import ConfigLoader
 from runtime.container.di import Container
 from runtime.modules.base import Module
 from runtime.modules.manifest import ModuleManifest
@@ -74,6 +77,66 @@ def test_init_registers_the_connector_registry_capability(
     resolved = container.resolve(CAPABILITY_CONNECTOR_REGISTRY)
 
     assert resolved is module.registry
+
+
+def test_init_resolves_connector_search_paths_from_runtime_config(
+    make_connector: Callable[..., Path], connectors_dir: Path, tmp_path: Path
+) -> None:
+    # Sprint 6 Architecture Package §7.3, ADR Candidate B's own consequence:
+    # closes ADR-0009's connector_search_paths wiring gap generically, via
+    # the "runtime.config" capability -- no value set by hand anywhere.
+    make_connector("erpnext")
+    config_dir = tmp_path / "config"
+    (config_dir / "modules").mkdir(parents=True)
+    (config_dir / "modules" / "integration.yaml").write_text(
+        yaml.safe_dump({"connector_search_paths": [str(connectors_dir)]}), encoding="utf-8"
+    )
+    container = Container()
+    container.register("runtime.config", lambda: ConfigLoader(config_dir))
+    module = IntegrationModule(_manifest())
+
+    module.init(container)
+
+    assert module.registry.get("erpnext") is not None
+    assert container.resolve(CAPABILITY_CONNECTOR_REGISTRY).get("erpnext") is not None
+
+
+def test_hand_set_connector_search_paths_takes_priority_over_runtime_config(
+    make_connector: Callable[..., Path], connectors_dir: Path, tmp_path: Path
+) -> None:
+    # A caller that already set connector_search_paths by hand before
+    # init() runs must keep exactly that value -- config resolution never
+    # silently overrides an explicit assignment.
+    make_connector("erpnext")
+    config_dir = tmp_path / "config"
+    (config_dir / "modules").mkdir(parents=True)
+    (config_dir / "modules" / "integration.yaml").write_text(
+        yaml.safe_dump({"connector_search_paths": [str(tmp_path / "nonexistent")]}), encoding="utf-8"
+    )
+    container = Container()
+    container.register("runtime.config", lambda: ConfigLoader(config_dir))
+    module = IntegrationModule(_manifest())
+    module.connector_search_paths = [connectors_dir]
+
+    module.init(container)
+
+    assert module.connector_search_paths == [connectors_dir]
+    assert module.registry.get("erpnext") is not None
+
+
+def test_init_without_runtime_config_registered_keeps_connector_search_paths_empty(
+    make_connector: Callable[..., Path],
+) -> None:
+    # No "runtime.config" capability at all (a bare Container(), exactly
+    # what every pre-Sprint-6 test already builds) must behave identically
+    # to today: connector_search_paths stays [], discovering nothing.
+    make_connector("erpnext")
+    module = IntegrationModule(_manifest())
+
+    module.init(Container())
+
+    assert module.connector_search_paths == []
+    assert module.registry.all_connectors() == ()
 
 
 def test_health_check_reports_the_registered_connector_count(

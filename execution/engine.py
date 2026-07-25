@@ -34,10 +34,24 @@ one replaying an equivalent path; a step whose `RollbackOutcome.supported`
 is `False` keeps its `FAILED` state and simply gains a non-`None`
 `rollback_outcome` — never silently promoted to look like a success.
 
-**Disclosed, not silently resolved — no event publication in this phase.**
-Unchanged from Phase 5: `ExecutionContext` has no `event_bus` field (still
-the same open, disclosed architecture clarification), so `ExecutionEngine`
-continues to publish nothing.
+**Event publication (Sprint 6 Architecture Package §18, ADR Candidate C).**
+Wires the nine identifiers `execution/events.py` has named and
+payload-specified since Sprint 5 Phase 2 into the points documented there.
+`ExecutionEngine` treats `context.event_bus` as a **publish-only**
+collaboration — the only method ever called on it is `publish()`, never
+`subscribe()`/`unsubscribe()`/`stats()`/`shutdown()`, even though the
+concrete `EventBus` type exposes all of them; enforced by convention and
+by `tests/execution/test_engine.py`'s own AST-based check, not by a
+narrower `Protocol` (Sprint 6 Architecture Review 3's own documentation
+recommendation — introducing one is deferred until a second, genuinely
+different `EventBus`-shaped collaborator exists to justify it). Every
+publish is wrapped so a delivery failure — the only one `EventBus.publish()`
+can itself raise, `EventBusBackpressureError`, since a subscriber handler's
+own exception is already caught inside that subscription's own thread —
+can never affect `execute()`'s own return value or control flow, extending
+§15.5's best-effort philosophy to this integration point exactly as
+approved. `context.event_bus is None` (the default, and every pre-Sprint-6
+caller) publishes nothing, identical to Phase 5-7 behavior.
 
 **On `PlanNotExecutableError` and `ExecutionCancelledError`.** Unchanged
 from Phase 5's own reasoning: neither is raised by `execute()`. A step
@@ -51,15 +65,28 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from integration.contract import ConnectorResponse
 from planning.contract import Plan, PlanStep
+from runtime.events.bus import Event
 from runtime.lifecycle import StateMachine
 
 from execution.confirmation_gate import ConfirmationGate
 from execution.context import ExecutionContext
 from execution.contract import ExecutionResult, ExecutionRun, StepExecutionRecord
 from execution.errors import PlanNotExecutableError
+from execution.events import (
+    EXECUTION_CANCELLED,
+    EXECUTION_COMPLETED,
+    EXECUTION_FAILED,
+    EXECUTION_STARTED,
+    STEP_AWAITING_CONFIRMATION,
+    STEP_FAILED,
+    STEP_SKIPPED,
+    STEP_STARTED,
+    STEP_SUCCEEDED,
+)
 from execution.lifecycle import (
     ExecutionRunState,
     StepExecutionState,
@@ -71,6 +98,14 @@ from execution.rollback import UnsupportedRollbackStrategy
 from execution.scheduler import StepScheduler
 
 _StepLifecycle = StateMachine[StepExecutionState]
+
+#: The one terminal state each of the three run-level "reached X" events
+#: (§13 of execution/events.py) corresponds to.
+_RUN_TERMINAL_EVENT: dict[ExecutionRunState, str] = {
+    ExecutionRunState.COMPLETED: EXECUTION_COMPLETED,
+    ExecutionRunState.CANCELLED: EXECUTION_CANCELLED,
+    ExecutionRunState.FAILED: EXECUTION_FAILED,
+}
 
 
 class ExecutionEngine:
@@ -90,6 +125,11 @@ class ExecutionEngine:
         """
 
         run, run_lifecycle = self._start_run(plan)
+        self._publish(
+            context,
+            EXECUTION_STARTED,
+            {"execution_run_id": run.execution_run_id, "plan_id": run.plan_id, "goal_id": run.goal_id},
+        )
         ordered_steps = self._order_steps(plan)
         confirmation_gate = ConfirmationGate(context.confirmation_provider)
 
@@ -100,11 +140,15 @@ class ExecutionEngine:
 
         for index, step in enumerate(ordered_steps):
             if not self._dependencies_met(step, succeeded_step_ids):
-                record, lifecycle = self._skip(step)
+                record, lifecycle = self._skip(
+                    step, run, context, reason="an upstream dependency did not succeed"
+                )
             elif context.cancellation_token.is_cancellation_requested:
                 cancelled = True
                 for remaining_step in ordered_steps[index:]:
-                    remaining_record, remaining_lifecycle = self._skip(remaining_step)
+                    remaining_record, remaining_lifecycle = self._skip(
+                        remaining_step, run, context, reason="the run was already cancelled"
+                    )
                     records.append(remaining_record)
                     step_lifecycles[remaining_step.step_id] = remaining_lifecycle
                 run.step_records = tuple(records)
@@ -119,6 +163,7 @@ class ExecutionEngine:
                 succeeded_step_ids.add(step.step_id)
 
         final_state = self._finalize_run(run, run_lifecycle, records, cancelled=cancelled)
+        self._publish_run_terminal_event(context, run, final_state, records)
         rollback_attempted = False
 
         if final_state is ExecutionRunState.FAILED and self._rollback_opted_in(context):
@@ -160,9 +205,16 @@ class ExecutionEngine:
     def _dependencies_met(self, step: PlanStep, succeeded_step_ids: set[str]) -> bool:
         return all(dependency_id in succeeded_step_ids for dependency_id in step.depends_on)
 
-    def _skip(self, step: PlanStep) -> tuple[StepExecutionRecord, _StepLifecycle]:
+    def _skip(
+        self, step: PlanStep, run: ExecutionRun, context: ExecutionContext, *, reason: str
+    ) -> tuple[StepExecutionRecord, _StepLifecycle]:
         lifecycle = new_step_execution_lifecycle()
         lifecycle.transition(StepExecutionState.SKIPPED)
+        self._publish(
+            context,
+            STEP_SKIPPED,
+            {"execution_run_id": run.execution_run_id, "step_id": step.step_id, "reason": reason},
+        )
         return StepExecutionRecord(step_id=step.step_id, state=lifecycle.state), lifecycle
 
     def _run_step(
@@ -173,11 +225,31 @@ class ExecutionEngine:
         run: ExecutionRun,
     ) -> tuple[StepExecutionRecord, _StepLifecycle]:
         lifecycle = new_step_execution_lifecycle()
+
+        if step.requires_confirmation:
+            self._publish(
+                context,
+                STEP_AWAITING_CONFIRMATION,
+                {
+                    "execution_run_id": run.execution_run_id,
+                    "step_id": step.step_id,
+                    "capability": step.capability,
+                },
+            )
         confirmation_granted = confirmation_gate.evaluate(step, run)
 
         if confirmation_granted is False:
             lifecycle.transition(StepExecutionState.AWAITING_CONFIRMATION)
             lifecycle.transition(StepExecutionState.SKIPPED)
+            self._publish(
+                context,
+                STEP_SKIPPED,
+                {
+                    "execution_run_id": run.execution_run_id,
+                    "step_id": step.step_id,
+                    "reason": "confirmation denied",
+                },
+            )
             record = StepExecutionRecord(
                 step_id=step.step_id, state=lifecycle.state, confirmation_granted=False
             )
@@ -187,6 +259,16 @@ class ExecutionEngine:
             lifecycle.transition(StepExecutionState.AWAITING_CONFIRMATION)
         lifecycle.transition(StepExecutionState.RUNNING)
 
+        # "attempt" is always 1 here: RetryPolicy (§17) runs its own retry
+        # loop internally and reports only the final (response, attempts)
+        # pair back to the engine, so STEP_STARTED can only mark the start
+        # of a step's whole invoke-with-retries sequence, not each
+        # individual retry within it -- disclosed, not a false precision.
+        self._publish(
+            context,
+            STEP_STARTED,
+            {"execution_run_id": run.execution_run_id, "step_id": step.step_id, "attempt": 1},
+        )
         started_at = self._now()
         response, attempts = self._invoke(step, context)
         lifecycle.transition(
@@ -194,6 +276,22 @@ class ExecutionEngine:
             if response.status in ("success", "partial")
             else StepExecutionState.FAILED
         )
+        if lifecycle.state is StepExecutionState.SUCCEEDED:
+            self._publish(
+                context,
+                STEP_SUCCEEDED,
+                {"execution_run_id": run.execution_run_id, "step_id": step.step_id},
+            )
+        else:
+            self._publish(
+                context,
+                STEP_FAILED,
+                {
+                    "execution_run_id": run.execution_run_id,
+                    "step_id": step.step_id,
+                    "detail": response.diagnostics,
+                },
+            )
 
         record = StepExecutionRecord(
             step_id=step.step_id,
@@ -242,6 +340,47 @@ class ExecutionEngine:
         run.state = lifecycle.state
         run.finished_at = self._now()
         return run.state
+
+    def _publish_run_terminal_event(
+        self,
+        context: ExecutionContext,
+        run: ExecutionRun,
+        final_state: ExecutionRunState,
+        records: list[StepExecutionRecord],
+    ) -> None:
+        event_type = _RUN_TERMINAL_EVENT.get(final_state)
+        if event_type is None:  # pragma: no cover - _finalize_run only ever returns one of the three
+            return
+
+        payload: dict[str, Any] = {"execution_run_id": run.execution_run_id}
+        if final_state is ExecutionRunState.COMPLETED:
+            payload["final_state"] = final_state.value
+        elif final_state is ExecutionRunState.FAILED:
+            payload["failed_step_ids"] = tuple(
+                record.step_id for record in records if record.state is StepExecutionState.FAILED
+            )
+        self._publish(context, event_type, payload)
+
+    def _publish(self, context: ExecutionContext, event_type: str, payload: dict[str, Any]) -> None:
+        """Best-effort, per §14/§17 item 4 of the Sprint 6 Architecture
+        Package: a publishing failure must never affect `execute()`'s own
+        outcome. `context.event_bus` is treated as publish-only -- see this
+        module's own docstring.
+        """
+
+        if context.event_bus is None:
+            return
+        try:
+            context.event_bus.publish(
+                Event(
+                    event_type=event_type,
+                    payload=payload,
+                    emitted_by="execution",
+                    correlation_id=context.correlation_id,
+                )
+            )
+        except Exception:
+            pass
 
     def _rollback_opted_in(self, context: ExecutionContext) -> bool:
         return not isinstance(context.rollback_strategy, UnsupportedRollbackStrategy)

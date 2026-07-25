@@ -1,0 +1,21 @@
+module_id: planning
+display_name: Planning
+maintained_by: planning-engine
+version: 0.1.0
+
+capabilities_provided:
+  - planning.engine
+capabilities_required: []
+
+pipeline_stage_bindings: []
+
+# Planning's own Responsibilities list (Sprint 4 Phase 4/5) does not
+# mention publishing PLANNING_STARTED/PLAN_CREATED/PLAN_VALIDATION_FAILED/
+# PLANNING_FAILED (planning/events.py) -- deliberately not declared here
+# either, matching the same discipline plugins/integration/module.yaml
+# already used for ConnectorInvoked/Succeeded/Failed before Sprint 5.
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"
