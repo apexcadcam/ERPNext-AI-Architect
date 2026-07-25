@@ -1,0 +1,8 @@
+{
+  "doctype": "Client Script",
+  "name": "Customer Tax ID Validation",
+  "dt": "Customer",
+  "view": "Form",
+  "enabled": 1,
+  "script": "frappe.ui.form.on('Customer', { validate(frm) { /* ... */ } });"
+}

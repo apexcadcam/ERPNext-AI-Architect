@@ -1,0 +1,12 @@
+{
+  "doctype": "Workspace",
+  "name": "Selling",
+  "label": "Selling",
+  "module": "Selling",
+  "icon": "selling",
+  "links": [
+    { "type": "Link", "label": "Customer", "link_to": "Customer" },
+    { "type": "Link", "label": "Sales Order", "link_to": "Sales Order" },
+    { "type": "Link", "label": "Quotation", "link_to": "Quotation" }
+  ]
+}
