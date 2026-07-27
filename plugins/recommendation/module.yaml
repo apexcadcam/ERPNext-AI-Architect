@@ -1,0 +1,26 @@
+module_id: recommendation
+display_name: Recommendation Engine
+maintained_by: recommendation
+version: 0.1.0
+
+capabilities_provided:
+  - recommendation.group_findings
+  - recommendation.build_recommendations
+  - recommendation.assemble_recommendation_set
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - group_findings
+  - build_recommendations
+  - assemble_recommendation_set
+
+# Recommendation Engine reads an already-produced ArchitectureEvaluation and
+# produces one self-contained artifact per run -- it touches no filesystem
+# and publishes/subscribes to nothing (Recommendation Engine Architecture
+# Specification v1.0 §7-§9's Lifecycle: no ongoing behavior beyond what
+# init() sets up).
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"

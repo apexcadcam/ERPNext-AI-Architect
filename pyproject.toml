@@ -41,6 +41,7 @@ packages = [
     "discovery",
     "synthesis",
     "evaluation",
+    "recommendation",
 ]
 
 [tool.pytest.ini_options]
