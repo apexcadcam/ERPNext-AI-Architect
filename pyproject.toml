@@ -39,6 +39,7 @@ packages = [
     "orchestration",
     "composition_root",
     "discovery",
+    "synthesis",
 ]
 
 [tool.pytest.ini_options]
