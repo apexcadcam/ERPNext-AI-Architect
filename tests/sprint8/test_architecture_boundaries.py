@@ -50,6 +50,35 @@ _VENDOR_SDK_MODULES = {"anthropic", "openai", "google", "langchain", "litellm"}
 _NETWORKING_MODULES = {"httpx", "requests", "urllib", "aiohttp"}
 _FORBIDDEN_DOMAIN_IMPORTS = {"knowledge", "analysis", "planning", "execution", "orchestration"}
 
+#: `intelligence/bridge/` (Sprint 11, Phase 1) is this package's one
+#: sanctioned consumer of `knowledge` — the Knowledge -> Intelligence
+#: translation layer ADR-001's own direction requires. This is a disclosed,
+#: narrow update to this Sprint's own stale assumption, not a change to
+#: Sprint 8's behavior: `intelligence/contract.py`, `null_engine.py`,
+#: `validating.py`, `module.py`, and `adapters/` still import none of
+#: `_FORBIDDEN_DOMAIN_IMPORTS`, unchanged. `analysis`/`planning`/
+#: `execution`/`orchestration` remain forbidden even for `bridge/` — only
+#: `knowledge` was ever authorized, and only for this one subpackage.
+_SANCTIONED_KNOWLEDGE_CONSUMER = INTELLIGENCE_DIR / "bridge"
+
+#: `planning/strategy_intelligence.py` (Sprint 12, Phase 1) and
+#: `planning/module.py` (Sprint 12, Phase 2 — config-driven strategy
+#: selection) are the two, named, sanctioned consumers of `intelligence`
+#: outside `intelligence/` itself — ADR-003's own "Intelligence reaches
+#: Planning through a new PlannerStrategy" decision, extended to the
+#: module that selects between strategies by configuration. A disclosed,
+#: narrow update to this Sprint's own stale "no existing package is a
+#: consumer of intelligence/ yet" assumption, not a change to Sprint 8's
+#: own behavior: every other file in `planning/` (`engine.py`,
+#: `strategy.py`, `contract.py`, `context.py`, `graph_reader.py`,
+#: `validation.py`, `errors.py`, `events.py`), and every file in
+#: `runtime/`, `execution/`, `orchestration/`, `integration/`,
+#: `knowledge/`, still imports none of `intelligence`.
+_SANCTIONED_INTELLIGENCE_CONSUMERS = (
+    REPO_ROOT / "planning" / "strategy_intelligence.py",
+    REPO_ROOT / "planning" / "module.py",
+)
+
 
 def _direct_top_level_imports(py_file: Path) -> set[str]:
     tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
@@ -95,9 +124,16 @@ def test_no_existing_package_directly_imports_intelligence() -> None:
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for directory in _EXISTING_PACKAGE_DIRS.values()
         for py_file, imports in _all_imports_under(directory).items()
-        if "intelligence" in imports
+        if "intelligence" in imports and py_file not in _SANCTIONED_INTELLIGENCE_CONSUMERS
     }
     assert violations == {}
+
+
+def test_each_sanctioned_intelligence_consumer_is_real_and_exercised() -> None:
+    # The positive complement of the test above -- proves each exception
+    # is real and exercised, not merely permitted and unused.
+    for consumer in _SANCTIONED_INTELLIGENCE_CONSUMERS:
+        assert "intelligence" in _direct_top_level_imports(consumer), str(consumer.relative_to(REPO_ROOT))
 
 
 def test_importing_runtime_boot_never_transitively_imports_intelligence() -> None:
@@ -159,12 +195,25 @@ def test_only_adapters_may_import_a_networking_library() -> None:
 
 
 def test_intelligence_has_no_direct_import_of_any_other_domain_package() -> None:
-    violations = {
-        str(py_file.relative_to(REPO_ROOT)): sorted(imports & _FORBIDDEN_DOMAIN_IMPORTS)
-        for py_file, imports in _all_imports_under(INTELLIGENCE_DIR).items()
-        if imports & _FORBIDDEN_DOMAIN_IMPORTS
-    }
+    violations = {}
+    for py_file, imports in _all_imports_under(INTELLIGENCE_DIR).items():
+        forbidden = imports & _FORBIDDEN_DOMAIN_IMPORTS
+        if _SANCTIONED_KNOWLEDGE_CONSUMER in py_file.parents:
+            forbidden = forbidden - {"knowledge"}
+        if forbidden:
+            violations[str(py_file.relative_to(REPO_ROOT))] = sorted(forbidden)
     assert violations == {}
+
+
+def test_bridge_is_a_real_exercised_knowledge_consumer() -> None:
+    # The positive complement of the test above -- proves the one
+    # exception is real and exercised, not merely permitted and unused.
+    imports = {
+        py_file: file_imports
+        for py_file, file_imports in _all_imports_under(_SANCTIONED_KNOWLEDGE_CONSUMER).items()
+        if "knowledge" in file_imports
+    }
+    assert imports, "expected at least one file under intelligence/bridge/ to import knowledge"
 
 
 def test_importing_intelligence_never_transitively_imports_a_forbidden_domain_package() -> None:

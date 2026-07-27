@@ -1,0 +1,35 @@
+module_id: synthesis
+display_name: Requirement Synthesis
+maintained_by: synthesis
+version: 0.1.0
+
+capabilities_provided:
+  - synthesis.partition_inventory
+  - synthesis.identify_modules
+  - synthesis.resolve_connector
+  - synthesis.extract_hooks
+  - synthesis.extract_components
+  - synthesis.extract_apis
+  - synthesis.extract_dependencies
+  - synthesis.assemble_facts
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - partition_inventory
+  - identify_modules
+  - resolve_connector
+  - extract_hooks
+  - extract_components
+  - extract_apis
+  - extract_dependencies
+  - assemble_facts
+
+# Requirement Synthesis reads an already-produced RepositoryInventory and
+# produces one self-contained artifact per run -- it publishes and
+# subscribes to nothing (Requirement Synthesis Engine Specification v1.1
+# §2's Lifecycle: no ongoing behavior beyond what init() sets up).
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"

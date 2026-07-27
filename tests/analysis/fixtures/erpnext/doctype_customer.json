@@ -1,0 +1,29 @@
+{
+  "doctype": "DocType",
+  "name": "Customer",
+  "module": "Selling",
+  "description": "A party that buys goods or services from the organization.",
+  "autoname": "field:customer_name",
+  "istable": 0,
+  "issubmittable": 0,
+  "fields": [
+    {
+      "fieldname": "customer_name",
+      "label": "Customer Name",
+      "fieldtype": "Data",
+      "reqd": 1
+    },
+    {
+      "fieldname": "customer_type",
+      "label": "Customer Type",
+      "fieldtype": "Select",
+      "reqd": 0
+    },
+    {
+      "fieldname": "tax_id",
+      "label": "",
+      "fieldtype": "Data",
+      "reqd": 0
+    }
+  ]
+}

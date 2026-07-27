@@ -1,0 +1,5 @@
+{
+  "module_name": "Selling",
+  "app_name": "erpnext",
+  "doctypes": ["Customer", "Sales Order", "Quotation"]
+}

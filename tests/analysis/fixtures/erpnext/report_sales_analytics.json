@@ -1,0 +1,12 @@
+{
+  "doctype": "Report",
+  "name": "Sales Analytics",
+  "ref_doctype": "Sales Invoice",
+  "report_type": "Query Report",
+  "is_standard": "Yes",
+  "columns": [
+    { "label": "Customer", "fieldname": "customer" },
+    { "label": "Territory", "fieldname": "territory" },
+    { "label": "Total", "fieldname": "total" }
+  ]
+}

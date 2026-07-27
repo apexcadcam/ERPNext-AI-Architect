@@ -1,0 +1,16 @@
+{
+  "doctype": "Workflow",
+  "name": "Leave Application Workflow",
+  "document_type": "Leave Application",
+  "is_active": 1,
+  "states": [
+    { "state": "Open", "doc_status": "0" },
+    { "state": "Approved", "doc_status": "1" },
+    { "state": "Rejected", "doc_status": "2" }
+  ],
+  "transitions": [
+    { "state": "Open", "action": "Approve", "next_state": "Approved", "allowed": "Leave Approver" },
+    { "state": "Open", "action": "Reject", "next_state": "Rejected", "allowed": "Leave Approver" },
+    { "state": "Rejected", "action": "Approve", "next_state": "Approved", "allowed": "Leave Approver" }
+  ]
+}

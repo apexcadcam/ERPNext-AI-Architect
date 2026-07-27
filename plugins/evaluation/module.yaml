@@ -1,0 +1,26 @@
+module_id: evaluation
+display_name: Architecture Evaluation
+maintained_by: evaluation
+version: 0.1.0
+
+capabilities_provided:
+  - evaluation.index_facts
+  - evaluation.execute_rules
+  - evaluation.assemble_evaluation
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - index_facts
+  - execute_rules
+  - assemble_evaluation
+
+# Architecture Evaluation reads an already-produced RepositoryFacts and
+# produces one self-contained artifact per run -- it touches no filesystem
+# and publishes/subscribes to nothing (Architecture Evaluation Engine
+# Specification v1.0 §2's Lifecycle: no ongoing behavior beyond what
+# init() sets up).
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"

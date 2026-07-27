@@ -1,0 +1,9 @@
+{
+  "doctype": "Server Script",
+  "name": "Auto Assign Task Owner",
+  "script_type": "DocType Event",
+  "reference_doctype": "Task",
+  "doctype_event": "Before Insert",
+  "disabled": 0,
+  "script": "if not doc.owner:\n    doc.owner = frappe.session.user"
+}

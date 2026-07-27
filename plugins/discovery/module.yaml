@@ -1,0 +1,27 @@
+module_id: discovery
+display_name: Repository Discovery
+maintained_by: discovery
+version: 0.1.0
+
+capabilities_provided:
+  - discovery.resolve_root
+  - discovery.walk_tree
+  - discovery.classify_entries
+  - discovery.assemble_inventory
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - resolve_root
+  - walk_tree
+  - classify_entries
+  - assemble_inventory
+
+# Repository Discovery reads a target repository and produces one
+# self-contained artifact per run -- it publishes and subscribes to
+# nothing (Repository Discovery Engine Specification v1.1 §2's Lifecycle:
+# no ongoing behavior beyond what init() sets up).
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"

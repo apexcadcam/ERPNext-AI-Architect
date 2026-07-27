@@ -25,6 +25,16 @@ PLANNING_DIR = REPO_ROOT / "planning"
 EXECUTION_DIR = REPO_ROOT / "execution"
 ORCHESTRATION_FORBIDDEN = {"secrets_management", "knowledge"}
 
+#: `runtime/cli.py`'s new `run-goal` command (Sprint 14, Phase 2, ADR-005)
+#: is the one, disclosed, sanctioned exception to "runtime/ never imports
+#: orchestration/" — it renders `orchestration.contract.GoalRunResult`
+#: (plain data, never `GoalOrchestrator`), the return type of
+#: `composition_root.run_goal_end_to_end`. A narrow, disclosed update to
+#: this Sprint's own stale assumption, not a change to this Sprint's
+#: behavior: every other file in `runtime/` still imports no part of
+#: `orchestration`.
+_SANCTIONED_ORCHESTRATION_CONSUMER = RUNTIME_DIR / "cli.py"
+
 
 def _direct_top_level_imports(py_file: Path) -> set[str]:
     tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
@@ -96,9 +106,15 @@ def test_runtime_has_no_direct_import_of_orchestration() -> None:
     violations = {
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for py_file, imports in _all_imports_under(RUNTIME_DIR).items()
-        if "orchestration" in imports
+        if "orchestration" in imports and py_file != _SANCTIONED_ORCHESTRATION_CONSUMER
     }
     assert violations == {}
+
+
+def test_cli_is_a_real_exercised_orchestration_consumer() -> None:
+    # The positive complement of the test above -- proves the one
+    # exception is real and exercised, not merely permitted and unused.
+    assert "orchestration" in _direct_top_level_imports(_SANCTIONED_ORCHESTRATION_CONSUMER)
 
 
 def test_importing_runtime_boot_never_transitively_imports_orchestration() -> None:

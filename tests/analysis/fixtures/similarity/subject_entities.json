@@ -1,0 +1,23 @@
+[
+  {
+    "entity_id": "req:entity:Patient Record",
+    "name": "Patient Record",
+    "supporting_evidence": [
+      { "source_reference": "REQ-1", "excerpt": "track patient records", "rationale": "identified as a structured mention" }
+    ]
+  },
+  {
+    "entity_id": "req:entity:Customer Account",
+    "name": "Customer Account",
+    "supporting_evidence": [
+      { "source_reference": "REQ-1", "excerpt": "manage customer accounts", "rationale": "identified as a structured mention" }
+    ]
+  },
+  {
+    "entity_id": "req:entity:Customer",
+    "name": "Customer",
+    "supporting_evidence": [
+      { "source_reference": "REQ-1", "excerpt": "track customers", "rationale": "identified as a structured mention" }
+    ]
+  }
+]
