@@ -25,6 +25,16 @@ RUNTIME_DIR = REPO_ROOT / "runtime"
 PLANNING_FORBIDDEN = {"integration", "secrets_management"}
 EXECUTION_FORBIDDEN = {"secrets_management", "knowledge", "planning"}
 
+#: `runtime/cli.py`'s new `run-goal` command (Sprint 14, Phase 2, ADR-005)
+#: is the one, disclosed, sanctioned exception to "runtime/ never imports
+#: planning/" — it constructs `planning.contract.{Goal,
+#: CapabilityDescriptor}` (plain data, never `PlanningEngine`) to build
+#: input for `composition_root.run_goal_end_to_end`. A narrow, disclosed
+#: update to this Sprint's own stale assumption, not a change to this
+#: Sprint's behavior: every other file in `runtime/` still imports
+#: neither `planning` nor `execution`.
+_SANCTIONED_PLANNING_CONSUMER = RUNTIME_DIR / "cli.py"
+
 
 def _direct_top_level_imports(py_file: Path) -> set[str]:
     tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
@@ -104,12 +114,20 @@ def test_importing_execution_module_never_transitively_imports_planning_as_a_liv
 
 
 def test_runtime_has_no_direct_import_of_planning_or_execution() -> None:
-    violations = {
-        str(py_file.relative_to(REPO_ROOT)): sorted(imports & {"planning", "execution"})
-        for py_file, imports in _all_imports_under(RUNTIME_DIR).items()
-        if imports & {"planning", "execution"}
-    }
+    violations = {}
+    for py_file, imports in _all_imports_under(RUNTIME_DIR).items():
+        forbidden = imports & {"planning", "execution"}
+        if py_file == _SANCTIONED_PLANNING_CONSUMER:
+            forbidden = forbidden - {"planning"}
+        if forbidden:
+            violations[str(py_file.relative_to(REPO_ROOT))] = sorted(forbidden)
     assert violations == {}
+
+
+def test_cli_is_a_real_exercised_planning_consumer() -> None:
+    # The positive complement of the test above -- proves the one
+    # exception is real and exercised, not merely permitted and unused.
+    assert "planning" in _direct_top_level_imports(_SANCTIONED_PLANNING_CONSUMER)
 
 
 def test_importing_runtime_boot_never_transitively_imports_planning_or_execution() -> None:

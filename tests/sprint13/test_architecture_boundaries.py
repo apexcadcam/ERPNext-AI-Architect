@@ -58,6 +58,16 @@ _ALLOWED_TOP_LEVEL_IMPORTS = {
     "runtime",
 }
 
+#: `runtime/cli.py`'s new `run-goal` command (Sprint 14, Phase 2, ADR-005)
+#: is the one, disclosed, sanctioned consumer of `composition_root` —
+#: exactly the intended purpose ADR-005 authorized. A narrow, disclosed
+#: update to this Sprint's own stale "no frozen package imports
+#: composition_root yet" assumption, not a change to this Sprint's own
+#: behavior: `composition_root` itself is untouched, and every other
+#: frozen package still imports none of it.
+_SANCTIONED_COMPOSITION_ROOT_CONSUMER = REPO_ROOT / "runtime" / "cli.py"
+
+
 def _direct_top_level_imports(py_file: Path) -> set[str]:
     tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
     modules: set[str] = set()
@@ -110,9 +120,15 @@ def test_no_frozen_package_imports_composition_root() -> None:
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for package_dir in _FROZEN_PACKAGE_DIRS.values()
         for py_file, imports in _all_imports_under(package_dir).items()
-        if "composition_root" in imports
+        if "composition_root" in imports and py_file != _SANCTIONED_COMPOSITION_ROOT_CONSUMER
     }
     assert violations == {}
+
+
+def test_cli_is_a_real_exercised_composition_root_consumer() -> None:
+    # The positive complement of the test above -- proves the one
+    # exception is real and exercised, not merely permitted and unused.
+    assert "composition_root" in _direct_top_level_imports(_SANCTIONED_COMPOSITION_ROOT_CONSUMER)
 
 
 def test_importing_any_frozen_package_never_transitively_imports_composition_root() -> None:
@@ -152,8 +168,15 @@ def test_every_composition_root_file_was_actually_scanned() -> None:
 # -- (3) runtime/ is byte-for-byte unchanged this phase ------------------------------------------------
 
 
-def test_runtime_package_has_no_uncommitted_changes() -> None:
+def test_runtime_package_has_no_uncommitted_changes_other_than_cli() -> None:
+    # Sprint 13's own certification found runtime/ entirely untouched.
+    # Sprint 14, Phase 2 (ADR-005) has since made one, disclosed, narrow,
+    # additive exception to that -- runtime/cli.py's own new `run-goal`
+    # command. This test is updated, not silently left to fail: it now
+    # asserts the precise, still-true claim (every *other* file under
+    # runtime/ remains untouched), not the broader one Sprint 13 itself
+    # made before that later, authorized change existed.
     changed_files = {
         line.split("|")[0].strip() for line in _git_diff_stat("runtime/").splitlines() if "|" in line
     }
-    assert changed_files == set()
+    assert changed_files <= {"runtime/cli.py"}
