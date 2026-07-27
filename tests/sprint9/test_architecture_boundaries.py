@@ -13,9 +13,16 @@ depends only on `analysis.contract` — not `analysis.erpnext`, not
 `analysis/requirements/` — proving both possible directions of the one
 dependency this Sprint could have accidentally introduced between its two
 independent extraction sources; (6) the whole `analysis/` internal import
-graph is acyclic; and (7) no existing package (including Sprint 8's own
-`intelligence/`) has yet become a consumer of `analysis/` — this Sprint
-builds capability, no consumer is wired to it yet.
+graph is acyclic; and (7) no existing package consumes `analysis/`
+*except* the named, ADR-001-sanctioned exceptions — `knowledge/domain/`
+(Sprint 10 Phase 1) and `knowledge/builder/` (Sprint 10 Phase 2) — the
+same "named legitimate consumers, everything else still forbidden" shape
+`tests/sprint7/test_architecture_boundaries.py` already established for
+`orchestration/`'s own two sanctioned imports. This item's own check has
+been updated twice now, once per Sprint 10 phase that introduced a new
+real consumer — each a stale-assumption fix necessitated by ADR-001
+(already accepted before either update), not a new design decision;
+Sprint 9's own behavior is unchanged both times.
 
 Self-contained, mirroring `tests/sprint7/test_architecture_boundaries.py`'s
 and `tests/sprint8/test_architecture_boundaries.py`'s own discipline
@@ -30,6 +37,8 @@ import ast
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ANALYSIS_DIR = REPO_ROOT / "analysis"
@@ -240,17 +249,59 @@ def test_analysis_internal_import_graph_is_acyclic() -> None:
     assert visited == set(_ANALYSIS_SUBMODULES)
 
 
-# -- (7) No existing package -- including Sprint 8's intelligence/ -- consumes analysis/ yet -------
+# -- (7) No existing package consumes analysis/ except the ADR-001-sanctioned exceptions ----------
+
+#: `knowledge/domain/` (Sprint 10 Phase 1) and `knowledge/builder/`
+#: (Sprint 10 Phase 2) are the two named, ADR-001-sanctioned consumers of
+#: `analysis.contract` — this set grows only when a later phase adds
+#: another one, exactly as explicitly authorized at the time, never
+#: silently. Everything else remains forbidden.
+_SANCTIONED_ANALYSIS_CONSUMERS = (
+    REPO_ROOT / "knowledge" / "domain",
+    REPO_ROOT / "knowledge" / "builder",
+)
+
+#: `runtime/cli.py`'s new `run-goal` command (Sprint 14, Phase 2, ADR-005)
+#: is a third, disclosed, sanctioned consumer of `analysis` — but a
+#: single *file*, not a directory, so it cannot join the tuple above
+#: (whose membership test is "directory is one of py_file's own
+#: parents"). It constructs `analysis.requirements.raw.RawRequirement`
+#: (plain data, never any part of `analysis`'s own extraction logic) to
+#: build input for `composition_root.run_goal_end_to_end`. A narrow,
+#: disclosed update to this Sprint's own stale assumption, not a change
+#: to this Sprint's behavior.
+_SANCTIONED_ANALYSIS_CONSUMER_FILE = REPO_ROOT / "runtime" / "cli.py"
 
 
-def test_no_existing_package_directly_imports_analysis() -> None:
+def test_no_existing_package_directly_imports_analysis_except_the_sanctioned_ones() -> None:
     violations = {
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for directory in _EXISTING_PACKAGE_DIRS.values()
         for py_file, imports in _all_imports_under(directory).items()
         if "analysis" in imports
+        and not any(consumer in py_file.parents for consumer in _SANCTIONED_ANALYSIS_CONSUMERS)
+        and py_file != _SANCTIONED_ANALYSIS_CONSUMER_FILE
     }
     assert violations == {}
+
+
+def test_cli_is_a_real_exercised_analysis_consumer() -> None:
+    # The positive complement of the test above -- proves the one,
+    # single-file exception is real and exercised, not merely permitted
+    # and unused.
+    assert "analysis" in _direct_top_level_imports(_SANCTIONED_ANALYSIS_CONSUMER_FILE)
+
+
+@pytest.mark.parametrize("consumer_dir", _SANCTIONED_ANALYSIS_CONSUMERS)
+def test_each_sanctioned_package_is_a_real_exercised_analysis_consumer(consumer_dir: Path) -> None:
+    # The positive complement of the test above -- proves each exception
+    # is real and exercised, not merely permitted and unused.
+    imports = {
+        py_file: file_imports
+        for py_file, file_imports in _all_imports_under(consumer_dir).items()
+        if "analysis" in file_imports
+    }
+    assert imports, "expected at least one knowledge/domain/ file to import analysis"
 
 
 def test_importing_runtime_boot_never_transitively_imports_analysis() -> None:
