@@ -261,17 +261,6 @@ _SANCTIONED_ANALYSIS_CONSUMERS = (
     REPO_ROOT / "knowledge" / "builder",
 )
 
-#: `runtime/cli.py`'s new `run-goal` command (Sprint 14, Phase 2, ADR-005)
-#: is a third, disclosed, sanctioned consumer of `analysis` — but a
-#: single *file*, not a directory, so it cannot join the tuple above
-#: (whose membership test is "directory is one of py_file's own
-#: parents"). It constructs `analysis.requirements.raw.RawRequirement`
-#: (plain data, never any part of `analysis`'s own extraction logic) to
-#: build input for `composition_root.run_goal_end_to_end`. A narrow,
-#: disclosed update to this Sprint's own stale assumption, not a change
-#: to this Sprint's behavior.
-_SANCTIONED_ANALYSIS_CONSUMER_FILE = REPO_ROOT / "runtime" / "cli.py"
-
 
 def test_no_existing_package_directly_imports_analysis_except_the_sanctioned_ones() -> None:
     violations = {
@@ -280,16 +269,8 @@ def test_no_existing_package_directly_imports_analysis_except_the_sanctioned_one
         for py_file, imports in _all_imports_under(directory).items()
         if "analysis" in imports
         and not any(consumer in py_file.parents for consumer in _SANCTIONED_ANALYSIS_CONSUMERS)
-        and py_file != _SANCTIONED_ANALYSIS_CONSUMER_FILE
     }
     assert violations == {}
-
-
-def test_cli_is_a_real_exercised_analysis_consumer() -> None:
-    # The positive complement of the test above -- proves the one,
-    # single-file exception is real and exercised, not merely permitted
-    # and unused.
-    assert "analysis" in _direct_top_level_imports(_SANCTIONED_ANALYSIS_CONSUMER_FILE)
 
 
 @pytest.mark.parametrize("consumer_dir", _SANCTIONED_ANALYSIS_CONSUMERS)
