@@ -294,14 +294,37 @@ _EXISTING_PACKAGE_DIRS = {
     "intelligence": REPO_ROOT / "intelligence",
 }
 
+#: `intelligence/bridge/` (Sprint 11, Phase 1) is now a real, sanctioned
+#: consumer of `knowledge.domain` (it translates `KnowledgeReference` into
+#: `intelligence.contract.EvidenceItem`) — a disclosed, narrow update to
+#: this test's own stale "no consumer yet" assumption, not a change to
+#: this Sprint's behavior. Every other existing package remains exactly as
+#: unaware of `knowledge.domain`/`builder`/`projection`/`query` as before.
+_SANCTIONED_NEW_KNOWLEDGE_SUBPACKAGE_CONSUMER = REPO_ROOT / "intelligence" / "bridge"
+
 
 def test_no_existing_package_imports_the_new_knowledge_subpackages_yet() -> None:
     violations: dict[str, list[str]] = {}
     for directory in _EXISTING_PACKAGE_DIRS.values():
         for py_file, imports in _all_full_imports_under(directory).items():
+            if _SANCTIONED_NEW_KNOWLEDGE_SUBPACKAGE_CONSUMER in py_file.parents:
+                continue
             new_subpackage_imports = {
                 module for module in imports if module.startswith(_NEW_KNOWLEDGE_SUBPACKAGE_PREFIXES)
             }
             if new_subpackage_imports:
                 violations[str(py_file.relative_to(REPO_ROOT))] = sorted(new_subpackage_imports)
     assert violations == {}
+
+
+def test_bridge_is_a_real_exercised_consumer_of_knowledge_domain() -> None:
+    # The positive complement of the test above -- proves the one
+    # exception is real and exercised, not merely permitted and unused.
+    imports = {
+        py_file: file_imports
+        for py_file, file_imports in _all_full_imports_under(
+            _SANCTIONED_NEW_KNOWLEDGE_SUBPACKAGE_CONSUMER
+        ).items()
+        if any(module.startswith(_NEW_KNOWLEDGE_SUBPACKAGE_PREFIXES) for module in file_imports)
+    }
+    assert imports, "expected at least one file under intelligence/bridge/ to import knowledge.domain"
