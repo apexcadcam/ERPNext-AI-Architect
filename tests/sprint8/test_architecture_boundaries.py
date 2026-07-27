@@ -61,6 +61,24 @@ _FORBIDDEN_DOMAIN_IMPORTS = {"knowledge", "analysis", "planning", "execution", "
 #: `knowledge` was ever authorized, and only for this one subpackage.
 _SANCTIONED_KNOWLEDGE_CONSUMER = INTELLIGENCE_DIR / "bridge"
 
+#: `planning/strategy_intelligence.py` (Sprint 12, Phase 1) and
+#: `planning/module.py` (Sprint 12, Phase 2 — config-driven strategy
+#: selection) are the two, named, sanctioned consumers of `intelligence`
+#: outside `intelligence/` itself — ADR-003's own "Intelligence reaches
+#: Planning through a new PlannerStrategy" decision, extended to the
+#: module that selects between strategies by configuration. A disclosed,
+#: narrow update to this Sprint's own stale "no existing package is a
+#: consumer of intelligence/ yet" assumption, not a change to Sprint 8's
+#: own behavior: every other file in `planning/` (`engine.py`,
+#: `strategy.py`, `contract.py`, `context.py`, `graph_reader.py`,
+#: `validation.py`, `errors.py`, `events.py`), and every file in
+#: `runtime/`, `execution/`, `orchestration/`, `integration/`,
+#: `knowledge/`, still imports none of `intelligence`.
+_SANCTIONED_INTELLIGENCE_CONSUMERS = (
+    REPO_ROOT / "planning" / "strategy_intelligence.py",
+    REPO_ROOT / "planning" / "module.py",
+)
+
 
 def _direct_top_level_imports(py_file: Path) -> set[str]:
     tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
@@ -106,9 +124,16 @@ def test_no_existing_package_directly_imports_intelligence() -> None:
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for directory in _EXISTING_PACKAGE_DIRS.values()
         for py_file, imports in _all_imports_under(directory).items()
-        if "intelligence" in imports
+        if "intelligence" in imports and py_file not in _SANCTIONED_INTELLIGENCE_CONSUMERS
     }
     assert violations == {}
+
+
+def test_each_sanctioned_intelligence_consumer_is_real_and_exercised() -> None:
+    # The positive complement of the test above -- proves each exception
+    # is real and exercised, not merely permitted and unused.
+    for consumer in _SANCTIONED_INTELLIGENCE_CONSUMERS:
+        assert "intelligence" in _direct_top_level_imports(consumer), str(consumer.relative_to(REPO_ROOT))
 
 
 def test_importing_runtime_boot_never_transitively_imports_intelligence() -> None:
