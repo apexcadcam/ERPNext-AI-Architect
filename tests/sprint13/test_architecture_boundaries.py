@@ -217,7 +217,14 @@ def test_runtime_package_has_no_uncommitted_changes_other_than_cli() -> None:
     # asserts the precise, still-true claim (every *other* file under
     # runtime/ remains untouched), not the broader one Sprint 13 itself
     # made before that later, authorized change existed.
+    #
+    # The Evidence Platform CLI (Spec v1.1 §6) adds a second permitted
+    # file, on the same terms: `runtime/output.py` holds the Output
+    # Contract every command renders through. It carries strings only and
+    # imports no engine, so it adds no dependency to the Runtime -- which
+    # `tests/test_command_output.py::test_command_output_carries_no_engine_type`
+    # asserts directly. Every other file under runtime/ remains untouched.
     changed_files = {
         line.split("|")[0].strip() for line in _git_diff_stat("runtime/").splitlines() if "|" in line
     }
-    assert changed_files <= {"runtime/cli.py"}
+    assert changed_files <= {"runtime/cli.py", "runtime/output.py"}

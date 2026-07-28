@@ -168,6 +168,26 @@ def test_summary_labels_and_values_are_column_aligned() -> None:
     assert len({len(line) for line in lines}) == 1
 
 
+def test_a_long_text_value_does_not_push_the_numbers_out_of_their_column() -> None:
+    # Found by rendering a real extraction: aligning every value to the
+    # widest one sent the counts hundreds of columns right the moment a
+    # filesystem path shared the section. Numbers align among themselves;
+    # text starts where the label column ends.
+    render = render_human(
+        CommandOutput(
+            summary=(
+                ("source root", "/home/gaber/frappe-bench/apps/erpnext"),
+                ("files examined", "2"),
+                ("evidence extracted", "13"),
+            ),
+            exit_code=0,
+        )
+    )
+    assert "  source root         /home/gaber/frappe-bench/apps/erpnext" in render
+    assert "  files examined       2" in render
+    assert "  evidence extracted  13" in render
+
+
 def test_single_summary_row_renders_without_padding_error() -> None:
     render = render_human(CommandOutput(summary=(("patterns produced", "8"),), exit_code=0))
     assert "  patterns produced  8" in render

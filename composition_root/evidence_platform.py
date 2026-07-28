@@ -47,26 +47,68 @@ from pathlib import Path
 
 from aggregation.contract import AggregationRequest, PatternSet
 from aggregation.engine import aggregate_patterns
+from aggregation.errors import AggregationError_
 from aggregation.persistence import read_pattern_set, write_pattern_set
 
-from evidence.contract import EvidenceExtractionRequest, EvidenceSet
+from evidence.contract import CanonicalRepository, EvidenceExtractionRequest, EvidenceSet
 from evidence.engine import extract_evidence
+from evidence.errors import EvidenceError_
 from evidence.persistence import read_evidence_set, write_evidence_set
+
+#: The canonical repository names a caller may pass, as plain strings.
+#:
+#: Exposed here so `runtime/cli.py` can name the valid choices in its own
+#: `--help` and error text without importing `evidence.contract` to reach
+#: the enum -- §2's boundary decision, honoured literally: the CLI holds
+#: no engine import at all.
+CANONICAL_REPOSITORY_NAMES: tuple[str, ...] = tuple(repository.value for repository in CanonicalRepository)
+
+#: The two exception types a caller must be prepared to catch, exposed for
+#: the same reason as the names above: `runtime/cli.py` maps them to an
+#: exit code (§7) and cannot import `evidence.errors` or
+#: `aggregation.errors` to name them.
+EVIDENCE_PLATFORM_ERRORS: tuple[type[Exception], ...] = (EvidenceError_, AggregationError_)
 
 
 def extract_repository_evidence(
-    request: EvidenceExtractionRequest,
     *,
+    repository: str,
+    source_root: str,
+    version: str,
+    commit: str,
+    correlation_id: str,
+    requested_by: str,
+    max_files: int,
+    timeout_seconds: float,
     evidence_path: Path,
     meta_path: Path,
 ) -> EvidenceSet:
-    """Run Evidence Extraction for `request` and persist the result.
+    """Run Evidence Extraction for one repository and persist the result.
+
+    **Takes primitives, not an `EvidenceExtractionRequest`.** §5 specified
+    a request-shaped parameter, but that would oblige the caller to build
+    the request -- which means importing `evidence.contract` -- and
+    `runtime/cli.py` is precisely the caller. §2 already settled that the
+    CLI reaches the platform *only* through this module, so the request is
+    constructed here instead. `CanonicalRepository(repository)` raises
+    `ValueError` on an unknown name, which the CLI reports as a validation
+    failure.
 
     Returns the `EvidenceSet` as well as writing it, so a caller renders
     exactly the object that was persisted rather than re-reading it and
     hoping the two agree.
     """
 
+    request = EvidenceExtractionRequest(
+        repository=CanonicalRepository(repository),
+        source_root=source_root,
+        version=version,
+        commit=commit,
+        correlation_id=correlation_id,
+        requested_by=requested_by,
+        max_files=max_files,
+        timeout_seconds=timeout_seconds,
+    )
     evidence_set = extract_evidence(request)
     write_evidence_set(evidence_set, evidence_path, meta_path)
     return evidence_set

@@ -23,6 +23,29 @@ renders the resulting `GoalRunResult`. It never constructs a
 `Container` itself, and never imports `intelligence.pipeline` or
 `intelligence.bridge` — every one of those already lives inside
 `composition_root` itself.
+
+**The Evidence Platform CLI (Spec v1.1) adds the `evidence` command
+group**, following that same adapter discipline exactly, with two rules
+this module holds to literally:
+
+1. **No engine import, anywhere in this file.** `evidence` and
+   `aggregation` are never imported — not their contracts, not their
+   errors, not their enums. Everything this file needs in order to
+   validate input and catch failures comes from
+   `composition_root.evidence_platform` as plain data:
+   `CANONICAL_REPOSITORY_NAMES` (strings) and `EVIDENCE_PLATFORM_ERRORS`
+   (exception classes). Spec v1.1 §2 rejected the alternative — a CLI that
+   imports two leaf capabilities and grows engine knowledge.
+2. **The import is lazy, inside the command.** At module scope this file
+   imports `composition_root` for `run_goal`; if the Evidence Platform
+   functions were pulled in there, every invocation — `architect doctor`
+   included — would load both engines. They are imported inside the
+   command body instead, the same way `plugins list` imports
+   `PluginRegistry` and `config validate` imports `ConfigLoader`.
+
+Every Evidence Platform command emits a `runtime.output.CommandOutput` and
+renders it through the one shared renderer, so `--json` and the human
+render cannot diverge (§6).
 """
 
 from __future__ import annotations
@@ -32,7 +55,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 import yaml
@@ -46,6 +69,7 @@ from orchestration.contract import GoalRunResult
 
 from runtime.boot import Runtime
 from runtime.errors import RuntimeError_
+from runtime.output import CommandOutput, emit_command_output
 
 app = typer.Typer(
     name="architect",
@@ -55,9 +79,11 @@ app = typer.Typer(
 plugins_app = typer.Typer(help="Plugin Registry operations.", no_args_is_help=True)
 runtime_app = typer.Typer(help="Runtime process operations.", no_args_is_help=True)
 config_app = typer.Typer(help="Configuration System operations.", no_args_is_help=True)
+evidence_app = typer.Typer(help="Evidence Platform — extraction operations.", no_args_is_help=True)
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(runtime_app, name="runtime")
 app.add_typer(config_app, name="config")
+app.add_typer(evidence_app, name="evidence")
 
 
 #: Exit codes — CLI_ARCHITECTURE.md §5, deliberately small in Sprint 1
@@ -452,6 +478,168 @@ def config_validate(
         typer.echo(f"Configuration valid (config_dir={config_dir}, environment={loader.environment}).")
 
     raise typer.Exit(EXIT_OK if not issues else EXIT_VALIDATION_FAILED)
+
+
+#: Where a canonical repository is expected to be checked out. Overridable
+#: per invocation with `--source-root`; a default, never an assumption the
+#: command depends on.
+DEFAULT_APPS_ROOT = Path("/home/gaber/frappe-bench/apps")
+
+#: Matches the directory the committed corpus already lives in, so a
+#: re-extraction lands beside its predecessor and `git diff` shows the
+#: change (the reason persistence sorts keys in the first place).
+DEFAULT_EVIDENCE_DIR = Path("evidence-data")
+
+#: Extraction limits. `frappe`'s own tree measured 46,296 files examined
+#: during Sprint 20's production validation, so a 200,000-file ceiling
+#: clears the largest real target with room to spare while still being a
+#: real bound; the same run completed in well under a minute, so 900s is
+#: generous rather than tight. Both are `--` overridable, and hitting the
+#: file ceiling surfaces as a WARNING plus `truncated`, never silently.
+DEFAULT_MAX_FILES = 200_000
+DEFAULT_TIMEOUT_SECONDS = 900.0
+
+RepositoryArgument = Annotated[str, typer.Argument(help="Canonical repository name: frappe or erpnext.")]
+ExtractVersionOption = Annotated[
+    str,
+    typer.Option("--version", help="Repository version stamped on the Evidence (required: never auto-detected)."),
+]
+ExtractCommitOption = Annotated[
+    str,
+    typer.Option("--commit", help="Repository commit stamped on the Evidence (required: never auto-detected)."),
+]
+SourceRootOption = Annotated[
+    Path | None,
+    typer.Option("--source-root", help=f"Repository checkout to read (default: {DEFAULT_APPS_ROOT}/<repository>)."),
+]
+OutputDirOption = Annotated[
+    Path, typer.Option("--output-dir", help="Directory the Evidence artifacts are written to.")
+]
+MaxFilesOption = Annotated[int, typer.Option("--max-files", help="Ceiling on files walked before truncating.")]
+TimeoutOption = Annotated[float, typer.Option("--timeout-seconds", help="Wall-clock ceiling for the walk.")]
+
+
+def _validation_message(exc: ValidationError) -> str:
+    """Flatten a pydantic `ValidationError` to one readable line.
+
+    Needed because the Evidence contract enforces some rules deep inside
+    the artifact rather than at the request boundary — `Source.commit`'s
+    `^[0-9a-f]{7,40}$` pattern is checked while building an `Evidence`
+    record, not when `EvidenceExtractionRequest` is constructed. Found by
+    running the command rather than by reading the code: without this,
+    `--commit abc123` raised a full pydantic traceback from inside the
+    collector, which §7 forbids.
+    """
+
+    details = "; ".join(
+        f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in exc.errors()
+    )
+    return f"Invalid input: {details}"
+
+
+def _fail(message: str, *, as_json: bool) -> NoReturn:
+    """Emit a failing `CommandOutput` and exit.
+
+    The failure path renders the *same* six sections as the success path
+    (Spec v1.1 §6) — `ERRORS` populated, everything else empty — so a
+    consumer parses both identically instead of branching on shape.
+    """
+
+    output = CommandOutput(errors=(message,), exit_code=EXIT_VALIDATION_FAILED)
+    emit_command_output(output, as_json=as_json)
+    raise typer.Exit(output.exit_code)
+
+
+@evidence_app.command("extract")
+def evidence_extract(
+    repository: RepositoryArgument,
+    version: ExtractVersionOption,
+    commit: ExtractCommitOption,
+    source_root: SourceRootOption = None,
+    output_dir: OutputDirOption = DEFAULT_EVIDENCE_DIR,
+    max_files: MaxFilesOption = DEFAULT_MAX_FILES,
+    timeout_seconds: TimeoutOption = DEFAULT_TIMEOUT_SECONDS,
+    correlation_id: CorrelationIdOption = None,
+    json: JsonOption = False,
+) -> None:
+    """Run Evidence Extraction against a canonical repository and persist
+    the result (Evidence Platform CLI Spec v1.1 §3.1).
+
+    A thin adapter, exactly like `run-goal`: it resolves paths, calls
+    `composition_root.evidence_platform.extract_repository_evidence` once,
+    and renders the returned `EvidenceSet` as a `CommandOutput`. It
+    constructs no request object, imports no engine, and performs no
+    counting of its own — every number below is read off the
+    `EvidenceStatistics` the engine itself produced.
+
+    `--version` and `--commit` are **required**. The Evidence Extraction
+    specification §2 makes provenance a caller-supplied input that is
+    never auto-detected, so that a stored `EvidenceSet` always says which
+    revision it actually describes. Inferring them from a previous run's
+    metadata would let a fresh extraction inherit a stale label silently —
+    the one failure mode this platform exists to prevent.
+    """
+
+    from composition_root.evidence_platform import (
+        CANONICAL_REPOSITORY_NAMES,
+        EVIDENCE_PLATFORM_ERRORS,
+        extract_repository_evidence,
+    )
+
+    if repository not in CANONICAL_REPOSITORY_NAMES:
+        _fail(
+            f"Unknown repository '{repository}'. Supported: {', '.join(CANONICAL_REPOSITORY_NAMES)}.",
+            as_json=json,
+        )
+
+    resolved_root = source_root if source_root is not None else DEFAULT_APPS_ROOT / repository
+    evidence_path = output_dir / f"{repository}-{version}.evidence.jsonl"
+    meta_path = output_dir / f"{repository}-{version}.meta.json"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        evidence_set = extract_repository_evidence(
+            repository=repository,
+            source_root=str(resolved_root),
+            version=version,
+            commit=commit,
+            correlation_id=correlation_id or str(uuid.uuid4()),
+            requested_by="cli",
+            max_files=max_files,
+            timeout_seconds=timeout_seconds,
+            evidence_path=evidence_path,
+            meta_path=meta_path,
+        )
+    except EVIDENCE_PLATFORM_ERRORS as exc:
+        _fail(str(exc), as_json=json)
+    except ValidationError as exc:
+        _fail(_validation_message(exc), as_json=json)
+
+    statistics = evidence_set.statistics
+    warnings = tuple(f"could not parse {error.relative_path}: {error.reason}" for error in evidence_set.errors)
+    if evidence_set.truncated:
+        warnings = (
+            f"the {max_files}-file ceiling was reached; this Evidence describes part of the tree only",
+            *warnings,
+        )
+
+    output = CommandOutput(
+        summary=(
+            ("repository", evidence_set.repository.value),
+            ("version", evidence_set.version),
+            ("commit", evidence_set.commit),
+            ("source root", str(resolved_root)),
+            ("files examined", str(statistics.files_examined)),
+            ("files skipped", str(statistics.files_skipped)),
+            ("files failed", str(statistics.files_failed)),
+            ("evidence extracted", str(statistics.evidence_extracted)),
+        ),
+        artifacts_written=(str(evidence_path), str(meta_path)),
+        warnings=warnings,
+        exit_code=EXIT_OK,
+    )
+    emit_command_output(output, as_json=json)
+    raise typer.Exit(output.exit_code)
 
 
 def main() -> None:

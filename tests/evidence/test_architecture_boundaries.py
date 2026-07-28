@@ -192,7 +192,12 @@ def test_the_sanctioned_consumer_imports_the_engine_not_a_private_internal() -> 
     # extraction outside the package that tests it.
     imports = _direct_full_imports(REPO_ROOT / "composition_root" / "evidence_platform.py")
     evidence_imports = {module for module in imports if module.split(".")[0] == "evidence"}
-    assert evidence_imports == {"evidence.contract", "evidence.engine", "evidence.persistence"}
+    assert evidence_imports == {
+        "evidence.contract",
+        "evidence.engine",
+        "evidence.errors",
+        "evidence.persistence",
+    }
     assert "evidence.collectors" not in evidence_imports
 
 

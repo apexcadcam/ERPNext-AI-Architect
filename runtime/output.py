@@ -103,11 +103,24 @@ class CommandOutput(BaseModel):
 
 
 def _render_summary_lines(summary: tuple[tuple[str, str], ...]) -> list[str]:
+    """Right-align numbers into their own column; leave text where it is.
+
+    The alignment exists so counts can be compared by eye. Aligning
+    *everything* to the widest value defeats that the moment one row holds
+    something long — a filesystem path pushes every count hundreds of
+    columns right, which is what happened the first time this rendered a
+    real extraction. So the width is computed from the numeric values
+    alone.
+    """
+
     if not summary:
         return [f"  {EMPTY_SECTION_MARKER}"]
     label_width = max(len(label) for label, _ in summary)
-    value_width = max(len(value) for _, value in summary)
-    return [f"  {label.ljust(label_width)}  {value.rjust(value_width)}" for label, value in summary]
+    number_width = max((len(value) for _, value in summary if value.isdigit()), default=0)
+    return [
+        f"  {label.ljust(label_width)}  {value.rjust(number_width) if value.isdigit() else value}"
+        for label, value in summary
+    ]
 
 
 def _render_entry_lines(entries: tuple[str, ...]) -> list[str]:

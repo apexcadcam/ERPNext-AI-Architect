@@ -198,6 +198,7 @@ def test_the_sanctioned_consumer_imports_the_engine_not_a_private_internal() -> 
     assert aggregation_imports == {
         "aggregation.contract",
         "aggregation.engine",
+        "aggregation.errors",
         "aggregation.persistence",
     }
 
