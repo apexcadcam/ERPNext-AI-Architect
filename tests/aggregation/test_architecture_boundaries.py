@@ -8,7 +8,25 @@ Validates, directly against the real source (Pattern Aggregation Engine
 Architecture Specification v1.0 §13):
 
 1. No frozen package imports `aggregation` -- it is a leaf capability, a
-   caller never a dependency.
+   caller never a dependency -- with **exactly one named exception**,
+   `composition_root/evidence_platform.py`, disclosed rather than silently
+   absorbed.
+
+   The Evidence Platform CLI (Spec v1.1 §2) needs the platform reachable
+   from a terminal, and every way of doing that changes some declared
+   boundary. The chosen way is the shape this project already established
+   twice: Sprint 13 made `composition_root` the one place allowed to wire
+   frozen packages together, and Sprint 14 made `runtime/cli.py` a named
+   consumer of `composition_root`, updating its own boundary test in place
+   to say so. `_SANCTIONED_AGGREGATION_CONSUMERS` names the file by exact
+   path; every other file under every frozen package stays forbidden, and
+   `test_the_sanctioned_consumer_exception_is_real_and_exercised` proves
+   the allowance is used rather than merely reserved.
+
+   The transitive assertion is **not** relaxed: importing any frozen
+   package still must not pull `aggregation` into `sys.modules`, because
+   `composition_root/__init__.py` deliberately does not re-export the new
+   functions and `runtime/cli.py` imports them lazily.
 2. `aggregation` imports **none** of `discovery`/`synthesis`/`evaluation`/
    `recommendation`, and none of them imports `aggregation`. Repository
    Intelligence and the Evidence Platform are separate lineages.
@@ -46,6 +64,11 @@ _FROZEN_PACKAGE_DIRS = {
     "runtime": REPO_ROOT / "runtime",
     "composition_root": REPO_ROOT / "composition_root",
 }
+
+#: The one file inside a frozen package permitted to import `aggregation`,
+#: named by exact repo-relative path so the exception cannot widen by
+#: accident. See this module's own docstring for the reasoning.
+_SANCTIONED_AGGREGATION_CONSUMERS = frozenset({"composition_root/evidence_platform.py"})
 
 #: Repository Intelligence's own four packages -- a separate lineage from
 #: the Evidence Platform, never its dependency nor its dependent (§13).
@@ -145,14 +168,39 @@ def _sys_modules_after_importing(module_name: str) -> set[str]:
 # -- (1) No frozen package imports aggregation ---------------------------------------------------------
 
 
-def test_no_frozen_package_imports_aggregation() -> None:
+def test_no_frozen_package_imports_aggregation_except_the_sanctioned_consumer() -> None:
     violations = {
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for package_dir in _FROZEN_PACKAGE_DIRS.values()
         for py_file, imports in _all_imports_under(package_dir).items()
         if "aggregation" in imports
+        and str(py_file.relative_to(REPO_ROOT)) not in _SANCTIONED_AGGREGATION_CONSUMERS
     }
     assert violations == {}
+
+
+def test_the_sanctioned_consumer_exception_is_real_and_exercised() -> None:
+    # An exception nothing uses is an exception that should not exist.
+    consumers = {
+        str(py_file.relative_to(REPO_ROOT))
+        for py_file, imports in _all_imports_under(REPO_ROOT / "composition_root").items()
+        if "aggregation" in imports
+    }
+    assert consumers == set(_SANCTIONED_AGGREGATION_CONSUMERS)
+
+
+def test_the_sanctioned_consumer_imports_the_engine_not_a_private_internal() -> None:
+    # The exception permits calling public entry points. It does not permit
+    # reaching into `aggregation.population` or `aggregation.resolvers` and
+    # reimplementing a denominator decision outside the engine that tests it.
+    imports = _direct_full_imports(REPO_ROOT / "composition_root" / "evidence_platform.py")
+    aggregation_imports = {module for module in imports if module.split(".")[0] == "aggregation"}
+    assert aggregation_imports == {
+        "aggregation.contract",
+        "aggregation.engine",
+        "aggregation.errors",
+        "aggregation.persistence",
+    }
 
 
 def test_importing_any_frozen_package_never_transitively_imports_aggregation() -> None:

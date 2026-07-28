@@ -176,10 +176,15 @@ def test_no_frozen_package_imports_runtime_cli() -> None:
 
 
 def test_only_cli_file_changed_under_runtime_this_phase() -> None:
+    # `runtime/output.py` joins `runtime/cli.py` as a permitted file with
+    # the Evidence Platform CLI (Spec v1.1 §6): the Output Contract every
+    # command renders through. Strings only, no engine import, so the
+    # Runtime's dependency set is unchanged -- see the matching, fuller
+    # note in `tests/sprint13/test_architecture_boundaries.py`.
     changed_files = {
         line.split("|")[0].strip() for line in _git_diff_stat("runtime/").splitlines() if "|" in line
     }
-    assert changed_files <= {"runtime/cli.py"}
+    assert changed_files <= {"runtime/cli.py", "runtime/output.py"}
 
 
 # A "positive complement" test asserting `_git_diff_stat("runtime/cli.py") != ""`

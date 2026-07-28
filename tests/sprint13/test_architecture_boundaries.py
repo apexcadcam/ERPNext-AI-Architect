@@ -43,8 +43,19 @@ _FROZEN_PACKAGE_DIRS = {
     "runtime": REPO_ROOT / "runtime",
 }
 
-#: Every top-level import `composition_root/root.py` is allowed to have:
-#: the seven frozen packages plus stdlib.
+#: Every top-level import `composition_root/` is allowed to have: the
+#: seven frozen packages plus stdlib, and — since the Evidence Platform
+#: CLI (Spec v1.1 §5) — the two Evidence Platform engines.
+#:
+#: **The two additions, disclosed.** `evidence` and `aggregation` are leaf
+#: capabilities the CLI must reach, and §2 settled that it reaches them
+#: through the Composition Root rather than by teaching `runtime/cli.py`
+#: engine knowledge. That is the same role Sprint 13 created this package
+#: for. The addition is confined to `composition_root/evidence_platform.py`
+#: — asserted by name in `tests/evidence/` and `tests/aggregation/`'s own
+#: boundary files — and `root.py`'s own Sprint 13 dependency set is
+#: unchanged, which `test_sprint13_root_module_gained_no_new_dependency`
+#: below verifies directly.
 _ALLOWED_TOP_LEVEL_IMPORTS = {
     "__future__",
     "pathlib",
@@ -56,7 +67,14 @@ _ALLOWED_TOP_LEVEL_IMPORTS = {
     "execution",
     "orchestration",
     "runtime",
+    "evidence",
+    "aggregation",
 }
+
+#: `root.py`'s own allowed set, unchanged since Sprint 13. Kept separate
+#: from the package-wide set above so a later file cannot widen `root.py`
+#: by widening the package.
+_ALLOWED_ROOT_MODULE_IMPORTS = _ALLOWED_TOP_LEVEL_IMPORTS - {"evidence", "aggregation"}
 
 #: `runtime/cli.py`'s new `run-goal` command (Sprint 14, Phase 2, ADR-005)
 #: is the one, disclosed, sanctioned consumer of `composition_root` —
@@ -149,6 +167,25 @@ def test_composition_root_imports_only_frozen_packages_and_stdlib() -> None:
     assert violations == {}
 
 
+def test_sprint13_root_module_gained_no_new_dependency() -> None:
+    # The Evidence Platform additions live in their own file. Sprint 13's
+    # own composition is frozen and must stay exactly as it was: this
+    # asserts `root.py` never picked up `evidence` or `aggregation` when
+    # the package-wide allowance widened.
+    root_imports = _direct_top_level_imports(COMPOSITION_ROOT_DIR / "root.py")
+    assert root_imports - _ALLOWED_ROOT_MODULE_IMPORTS == set()
+    assert {"evidence", "aggregation"} & root_imports == set()
+
+
+def test_composition_root_package_init_pulls_in_no_evidence_platform_engine() -> None:
+    # Deliberate (see `composition_root/evidence_platform.py`'s docstring):
+    # re-exporting would make `import composition_root` — which
+    # `runtime/cli.py` does at module scope — transitively import both
+    # engines on every invocation, including `architect doctor`.
+    init_imports = _direct_top_level_imports(COMPOSITION_ROOT_DIR / "__init__.py")
+    assert {"evidence", "aggregation"} & init_imports == set()
+
+
 def test_composition_root_imports_from_every_frozen_package_it_claims_to() -> None:
     # The positive complement of the test above -- proves composition_root
     # actually exercises each of the seven frozen packages it depends on,
@@ -161,7 +198,11 @@ def test_composition_root_imports_from_every_frozen_package_it_claims_to() -> No
 
 
 def test_every_composition_root_file_was_actually_scanned() -> None:
-    expected = {COMPOSITION_ROOT_DIR / "__init__.py", COMPOSITION_ROOT_DIR / "root.py"}
+    expected = {
+        COMPOSITION_ROOT_DIR / "__init__.py",
+        COMPOSITION_ROOT_DIR / "root.py",
+        COMPOSITION_ROOT_DIR / "evidence_platform.py",
+    }
     assert expected <= set(_all_imports_under(COMPOSITION_ROOT_DIR))
 
 
@@ -176,7 +217,14 @@ def test_runtime_package_has_no_uncommitted_changes_other_than_cli() -> None:
     # asserts the precise, still-true claim (every *other* file under
     # runtime/ remains untouched), not the broader one Sprint 13 itself
     # made before that later, authorized change existed.
+    #
+    # The Evidence Platform CLI (Spec v1.1 §6) adds a second permitted
+    # file, on the same terms: `runtime/output.py` holds the Output
+    # Contract every command renders through. It carries strings only and
+    # imports no engine, so it adds no dependency to the Runtime -- which
+    # `tests/test_command_output.py::test_command_output_carries_no_engine_type`
+    # asserts directly. Every other file under runtime/ remains untouched.
     changed_files = {
         line.split("|")[0].strip() for line in _git_diff_stat("runtime/").splitlines() if "|" in line
     }
-    assert changed_files <= {"runtime/cli.py"}
+    assert changed_files <= {"runtime/cli.py", "runtime/output.py"}

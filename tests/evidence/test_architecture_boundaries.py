@@ -9,8 +9,29 @@ Validates, directly against the real source:
 
 1. No frozen package (`analysis`, `knowledge`, `intelligence`, `planning`,
    `execution`, `orchestration`, `runtime`, `composition_root`) imports
-   `evidence` — nothing downstream exists yet, so `evidence` is a leaf
+   `evidence`, with **exactly one named exception**: `evidence` is a leaf
    capability, a caller never a dependency.
+
+   **The exception, disclosed rather than silently absorbed.** The
+   Evidence Platform CLI (Spec v1.1 §2) needs the platform reachable from
+   a terminal, and every option for doing that changes some declared
+   boundary. The chosen option is the one this project already
+   established twice — Sprint 13 made `composition_root` *the one place
+   allowed to import frozen packages together and wire them*, and Sprint
+   14 made `runtime/cli.py` a named, disclosed consumer of
+   `composition_root`, updating its own boundary test in place to say so.
+   `composition_root/evidence_platform.py` is that same shape, one layer
+   further out, and `_SANCTIONED_EVIDENCE_CONSUMERS` below names it by
+   exact path. Every other file under every frozen package — including
+   every other file under `composition_root` itself — remains forbidden,
+   and `test_the_sanctioned_consumer_exception_is_real_and_exercised`
+   proves the exception is used rather than merely reserved.
+
+   The transitive assertion is **not** relaxed: importing any frozen
+   package, `composition_root` included, still must not pull `evidence`
+   into `sys.modules`, because `composition_root/__init__.py` deliberately
+   does not re-export the new functions and `runtime/cli.py` imports them
+   lazily inside the commands that need them.
 2. None of `discovery`, `synthesis`, `evaluation`, `recommendation`
    imports `evidence`, and `evidence` imports none of them — Evidence
    Extraction and Repository Intelligence are **sibling leaves, not a
@@ -55,6 +76,12 @@ _FROZEN_PACKAGE_DIRS = {
     "composition_root": REPO_ROOT / "composition_root",
 }
 
+#: The one file inside a frozen package permitted to import `evidence`,
+#: named by exact repo-relative path so the exception cannot widen by
+#: accident. See this module's own docstring for the full reasoning; see
+#: `composition_root/evidence_platform.py`'s docstring for the design.
+_SANCTIONED_EVIDENCE_CONSUMERS = frozenset({"composition_root/evidence_platform.py"})
+
 #: Repository Intelligence's own four packages -- siblings of `evidence`,
 #: never its dependencies nor its dependents (§12).
 _REPOSITORY_INTELLIGENCE_DIRS = {
@@ -96,6 +123,24 @@ def _direct_top_level_imports(py_file: Path) -> set[str]:
     return modules
 
 
+def _direct_full_imports(py_file: Path) -> set[str]:
+    """Full dotted module paths, not just top-level names -- required to
+    check *which* `evidence` submodules the sanctioned consumer reaches
+    for, since `evidence.engine` and `evidence.collectors` share a
+    top-level name.
+    """
+
+    tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                modules.add(alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None and node.level == 0:
+            modules.add(node.module)
+    return modules
+
+
 def _all_imports_under(package_dir: Path) -> dict[Path, set[str]]:
     return {
         py_file: _direct_top_level_imports(py_file)
@@ -119,14 +164,41 @@ def _sys_modules_after_importing(module_name: str) -> set[str]:
 # -- (1) No frozen package imports evidence -------------------------------------------------------------
 
 
-def test_no_frozen_package_imports_evidence() -> None:
+def test_no_frozen_package_imports_evidence_except_the_sanctioned_consumer() -> None:
     violations = {
         str(py_file.relative_to(REPO_ROOT)): sorted(imports)
         for package_dir in _FROZEN_PACKAGE_DIRS.values()
         for py_file, imports in _all_imports_under(package_dir).items()
-        if "evidence" in imports
+        if "evidence" in imports and str(py_file.relative_to(REPO_ROOT)) not in _SANCTIONED_EVIDENCE_CONSUMERS
     }
     assert violations == {}
+
+
+def test_the_sanctioned_consumer_exception_is_real_and_exercised() -> None:
+    # An exception that nothing uses is an exception that should not exist.
+    # This asserts the named file is present and does import `evidence`, so
+    # the allowance above can never quietly outlive its reason.
+    consumers = {
+        str(py_file.relative_to(REPO_ROOT))
+        for py_file, imports in _all_imports_under(REPO_ROOT / "composition_root").items()
+        if "evidence" in imports
+    }
+    assert consumers == set(_SANCTIONED_EVIDENCE_CONSUMERS)
+
+
+def test_the_sanctioned_consumer_imports_the_engine_not_a_private_internal() -> None:
+    # The exception permits calling the Evidence Platform's public entry
+    # points. It does not permit reaching into collectors or reimplementing
+    # extraction outside the package that tests it.
+    imports = _direct_full_imports(REPO_ROOT / "composition_root" / "evidence_platform.py")
+    evidence_imports = {module for module in imports if module.split(".")[0] == "evidence"}
+    assert evidence_imports == {
+        "evidence.contract",
+        "evidence.engine",
+        "evidence.errors",
+        "evidence.persistence",
+    }
+    assert "evidence.collectors" not in evidence_imports
 
 
 def test_importing_any_frozen_package_never_transitively_imports_evidence() -> None:

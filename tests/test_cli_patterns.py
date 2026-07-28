@@ -1,0 +1,333 @@
+"""Tests for `architect patterns aggregate` (Evidence Platform CLI
+Architecture Specification v1.1 §3.2, §6, §7).
+
+Real command, real engines, real artifacts on disk -- the command is a
+thin adapter, so mocking the layer beneath it would leave nothing under
+test.
+"""
+
+from __future__ import annotations
+
+import json as json_module
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from runtime.cli import app
+from runtime.output import SECTION_ORDER
+
+runner = CliRunner()
+
+_CUSTOMER_PY = """
+class Customer:
+    def validate(self):
+        pass
+
+    def on_submit(self):
+        pass
+"""
+
+_API_PY = """
+import frappe
+
+
+@frappe.whitelist()
+def get_data():
+    return {}
+
+
+@frappe.whitelist()
+def get_more():
+    return {}
+
+
+@frappe.whitelist()
+@frappe.read_only()
+def get_report():
+    return {}
+"""
+
+_COMMIT = "61ab7e2b2409b293ffd3c8f72d730fa89b201332"
+_VERSION = "v15.102.0"
+
+
+@pytest.fixture
+def evidence_dir(tmp_path: Path) -> Path:
+    """A real Evidence artifact, produced by the real extract command."""
+
+    source_root = tmp_path / "src"
+    (source_root / "erpnext" / "doctype" / "customer").mkdir(parents=True)
+    (source_root / "erpnext" / "doctype" / "customer" / "customer.py").write_text(_CUSTOMER_PY)
+    (source_root / "erpnext" / "api.py").write_text(_API_PY)
+
+    out = tmp_path / "evidence-out"
+    result = runner.invoke(
+        app,
+        [
+            "evidence",
+            "extract",
+            "erpnext",
+            "--version",
+            _VERSION,
+            "--commit",
+            _COMMIT,
+            "--source-root",
+            str(source_root),
+            "--output-dir",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    return out
+
+
+@pytest.fixture
+def pattern_dir(tmp_path: Path) -> Path:
+    return tmp_path / "pattern-out"
+
+
+def _args(evidence_dir: Path, pattern_dir: Path, *extra: str) -> list[str]:
+    return [
+        "patterns",
+        "aggregate",
+        "erpnext",
+        "--version",
+        _VERSION,
+        "--evidence-dir",
+        str(evidence_dir),
+        "--output-dir",
+        str(pattern_dir),
+        *extra,
+    ]
+
+
+# -- The happy path ------------------------------------------------------------------------------------
+
+
+def test_aggregate_succeeds_and_writes_both_artifacts(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir))
+
+    assert result.exit_code == 0
+    assert (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").exists()
+    assert (pattern_dir / f"erpnext-{_VERSION}.meta.json").exists()
+
+
+def test_summary_rows_are_engine_statistics_verbatim(evidence_dir: Path, pattern_dir: Path) -> None:
+    # Every value below is read back off the persisted PatternSet, so this
+    # asserts the CLI reported the engine's numbers rather than its own.
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    summary = json_module.loads(result.stdout)["summary"]
+
+    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    statistics = meta["statistics"]
+
+    assert summary["evidence records consumed"] == str(statistics["evidence_records_consumed"])
+    assert summary["categories present"] == str(statistics["categories_present"])
+    assert summary["categories aggregated"] == str(statistics["categories_aggregated"])
+    assert summary["categories skipped"] == str(statistics["categories_skipped"])
+    assert summary["patterns produced"] == str(statistics["patterns_produced"])
+    assert summary["subjects below threshold"] == str(statistics["subjects_below_threshold"])
+
+
+def test_reported_artifact_paths_are_the_files_actually_written(
+    evidence_dir: Path, pattern_dir: Path
+) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    written = json_module.loads(result.stdout)["artifacts_written"]
+
+    assert len(written) == 2
+    for path in written:
+        assert Path(path).exists()
+
+
+# -- SkippedAggregation reaches the terminal intact -----------------------------------------------------
+
+
+def test_every_skipped_aggregation_is_reported(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    skipped = json_module.loads(result.stdout)["skipped"]
+
+    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    assert len(skipped) == len(meta["skipped_aggregations"]) == 1
+
+
+def test_the_skip_reason_is_printed_in_full_and_unedited(evidence_dir: Path, pattern_dir: Path) -> None:
+    # The declared denominator gap is the platform's own account of what it
+    # cannot yet measure. Truncating or paraphrasing it for terminal
+    # tidiness would turn a disclosed limitation back into a footnote.
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    skipped = json_module.loads(result.stdout)["skipped"]
+
+    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    reason = meta["skipped_aggregations"][0]["reason"]
+
+    assert reason in skipped[0]
+    assert "..." not in skipped[0]
+
+
+def test_the_skip_line_carries_category_status_and_record_count(
+    evidence_dir: Path, pattern_dir: Path
+) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir))
+
+    assert "controller_lifecycle_hook" in result.stdout
+    assert "skipped_no_population" in result.stdout
+    # The difference between "no records" and "no denominator" is the whole
+    # point of `evidence_records_present`.
+    assert "2 Evidence record(s) present" in result.stdout
+
+
+def test_a_skip_does_not_make_the_command_fail(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    payload = json_module.loads(result.stdout)
+
+    assert payload["exit_code"] == 0
+    assert payload["errors"] == []
+    assert payload["skipped"] != []
+
+
+# -- The threshold comes from the registry, not from the CLI ---------------------------------------------
+
+
+def test_the_default_threshold_is_the_registered_one(evidence_dir: Path, pattern_dir: Path) -> None:
+    from aggregation.engine import MIN_OCCURRENCES_THRESHOLD
+    from composition_root.evidence_platform import DEFAULT_MIN_OCCURRENCES
+
+    assert DEFAULT_MIN_OCCURRENCES == MIN_OCCURRENCES_THRESHOLD.value
+
+    default_run = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    explicit_run = runner.invoke(
+        app, _args(evidence_dir, pattern_dir, "--min-occurrences", str(DEFAULT_MIN_OCCURRENCES), "--json")
+    )
+    assert (
+        json_module.loads(default_run.stdout)["summary"] == json_module.loads(explicit_run.stdout)["summary"]
+    )
+
+
+def test_min_occurrences_is_honoured(evidence_dir: Path, pattern_dir: Path) -> None:
+    # `frappe.read_only` occurs once in the fixture: promoted at 1, below
+    # threshold at 2.
+    at_one = json_module.loads(
+        runner.invoke(app, _args(evidence_dir, pattern_dir, "--min-occurrences", "1", "--json")).stdout
+    )["summary"]
+    at_two = json_module.loads(
+        runner.invoke(app, _args(evidence_dir, pattern_dir, "--min-occurrences", "2", "--json")).stdout
+    )["summary"]
+
+    assert int(at_one["patterns produced"]) > int(at_two["patterns produced"])
+    assert int(at_one["subjects below threshold"]) < int(at_two["subjects below threshold"])
+
+
+# -- Output Contract conformance (§6) ---------------------------------------------------------------------
+
+
+def test_human_output_emits_all_six_sections_in_order(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir))
+    positions = [result.stdout.index(section.upper().replace("_", " ")) for section in SECTION_ORDER]
+
+    assert positions == sorted(positions)
+    assert result.stdout.strip().endswith("exit: 0")
+
+
+def test_json_output_emits_all_six_keys_plus_exit_code(evidence_dir: Path, pattern_dir: Path) -> None:
+    payload = json_module.loads(runner.invoke(app, _args(evidence_dir, pattern_dir, "--json")).stdout)
+
+    assert list(payload) == [*SECTION_ORDER, "exit_code"]
+    assert payload["warnings"] == []
+
+
+def test_both_modes_report_identical_numbers(evidence_dir: Path, pattern_dir: Path) -> None:
+    human = runner.invoke(app, _args(evidence_dir, pattern_dir)).stdout
+    payload = json_module.loads(runner.invoke(app, _args(evidence_dir, pattern_dir, "--json")).stdout)
+
+    for label, value in payload["summary"].items():
+        assert label in human
+        assert value in human
+
+
+# -- Failure paths (§7) ------------------------------------------------------------------------------------
+
+
+def test_a_missing_evidence_artifact_fails_with_a_next_step(tmp_path: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(tmp_path / "empty", pattern_dir))
+
+    assert result.exit_code == 1
+    assert "No Evidence artifact at" in result.stdout
+    assert "architect evidence extract" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_unknown_repository_fails_with_a_readable_message(evidence_dir: Path, pattern_dir: Path) -> None:
+    args = _args(evidence_dir, pattern_dir)
+    args[2] = "apex_dashboard"
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "Unknown repository 'apex_dashboard'" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_a_failing_run_still_emits_all_six_sections(tmp_path: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(tmp_path / "empty", pattern_dir))
+
+    for section in SECTION_ORDER:
+        assert section.upper().replace("_", " ") in result.stdout
+    assert result.stdout.strip().endswith("exit: 1")
+
+
+def test_a_failing_run_in_json_mode_is_still_parseable(tmp_path: Path, pattern_dir: Path) -> None:
+    payload = json_module.loads(runner.invoke(app, _args(tmp_path / "empty", pattern_dir, "--json")).stdout)
+
+    assert list(payload) == [*SECTION_ORDER, "exit_code"]
+    assert payload["exit_code"] == 1
+    assert payload["skipped"] == []
+    assert len(payload["errors"]) == 1
+
+
+def test_nothing_is_written_when_the_run_fails(tmp_path: Path, pattern_dir: Path) -> None:
+    runner.invoke(app, _args(tmp_path / "empty", pattern_dir))
+    assert not (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").exists()
+
+
+def test_a_corrupt_evidence_artifact_fails_with_the_engines_own_message(
+    evidence_dir: Path, pattern_dir: Path
+) -> None:
+    # `read_evidence_set` wraps every malformed-input case in
+    # `EvidenceError_`; the CLI maps that to exit 1 and prints the message.
+    (evidence_dir / f"erpnext-{_VERSION}.evidence.jsonl").write_text("{not json at all\n")
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir))
+
+    assert result.exit_code == 1
+    assert "malformed evidence record" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_a_zero_min_occurrences_fails_cleanly(evidence_dir: Path, pattern_dir: Path) -> None:
+    # `AggregationRequest.min_occurrences` is `ge=1`: a floor of zero would
+    # promote every one-off observation to a Pattern. Rejected by the
+    # contract, reported by the CLI, never a traceback.
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--min-occurrences", "0"))
+
+    assert result.exit_code == 1
+    assert "Invalid input: min_occurrences" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_version_is_required(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, ["patterns", "aggregate", "erpnext", "--evidence-dir", str(evidence_dir)])
+    assert result.exit_code != 0
+
+
+# -- Aggregation never re-runs extraction ------------------------------------------------------------------
+
+
+def test_aggregate_works_after_the_source_tree_is_gone(
+    evidence_dir: Path, pattern_dir: Path, tmp_path: Path
+) -> None:
+    import shutil
+
+    shutil.rmtree(tmp_path / "src")
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir))
+
+    assert result.exit_code == 0
