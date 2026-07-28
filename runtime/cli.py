@@ -658,6 +658,9 @@ EvidenceDirOption = Annotated[
 PatternDirOption = Annotated[
     Path, typer.Option("--output-dir", help="Directory the Pattern artifacts are written to.")
 ]
+PatternInputDirOption = Annotated[
+    Path, typer.Option("--pattern-dir", help="Directory holding the persisted Pattern artifacts.")
+]
 MinOccurrencesOption = Annotated[
     int | None,
     typer.Option(
@@ -666,6 +669,18 @@ MinOccurrencesOption = Annotated[
         "(default: the registered MIN_OCCURRENCES_THRESHOLD).",
     ),
 ]
+
+#: How a `SkippedAggregation` is rendered into the `SKIPPED` section.
+#:
+#: One template, used by both `patterns aggregate` and `patterns report`,
+#: so the two cannot describe the same gap differently. `{reason}` is
+#: substituted whole and never truncated: that text is the platform's own
+#: account of a limitation it can see but cannot yet measure, and
+#: shortening it for terminal tidiness would demote a disclosed gap back
+#: to a footnote.
+SKIPPED_AGGREGATION_TEMPLATE = (
+    "{category} [{status}] — {records} Evidence record(s) present, not aggregated: {reason}"
+)
 
 
 @patterns_app.command("aggregate")
@@ -746,8 +761,137 @@ def patterns_aggregate(
         ),
         artifacts_written=(str(patterns_path), str(pattern_meta_path)),
         skipped=tuple(
-            f"{skipped.evidence_category.value} [{skipped.status.value}] "
-            f"— {skipped.evidence_records_present} Evidence record(s) present, not aggregated: {skipped.reason}"
+            SKIPPED_AGGREGATION_TEMPLATE.format(
+                category=skipped.evidence_category.value,
+                status=skipped.status.value,
+                records=skipped.evidence_records_present,
+                reason=skipped.reason,
+            )
+            for skipped in pattern_set.skipped_aggregations
+        ),
+        exit_code=EXIT_OK,
+    )
+    emit_command_output(output, as_json=json)
+    raise typer.Exit(output.exit_code)
+
+
+@patterns_app.command("report")
+def patterns_report(
+    repository: RepositoryArgument,
+    version: AggregateVersionOption,
+    pattern_dir: PatternInputDirOption = DEFAULT_PATTERN_DIR,
+    json: JsonOption = False,
+) -> None:
+    """Render an already-persisted `PatternSet` (Evidence Platform CLI
+    Spec v1.1 §3.3). **Read-only: runs no engine and writes nothing.**
+
+    Renders exactly the four groups §3.3 names, in order: provenance, the
+    measured Patterns, the subjects observed below threshold, and the
+    skipped aggregations — plus each category's `population_description`,
+    stated once, because a share means nothing without its denominator
+    named. Nothing else is added: no derived totals, no rankings, no
+    commentary.
+
+    **This command performs no arithmetic.** Every number below is a field
+    read off the persisted artifact and converted to a string. In
+    particular `support` is *formatted*, never recomputed: the CLI does
+    not divide `occurrences` by `population`, because a second computation
+    of a stored quantity is a second source of truth, and the two would
+    eventually disagree. It is printed as the ratio the engine stored,
+    because `aggregation.contract.Pattern` deliberately named the field
+    `support` — a share, not a percentage — and rescaling it here would be
+    the CLI restating the engine's vocabulary in its own terms.
+
+    **Why Patterns and below-threshold subjects appear under `SUMMARY`.**
+    §6's six sections are fixed, and `SUMMARY` is the one that carries
+    ordered label/value data. Each row is prefixed (`pattern:` /
+    `below threshold:`) so the three groups stay distinguishable, and each
+    label carries its `evidence_category`, which is what makes the labels
+    unique: the engine keys a Pattern by (category, subject), so two
+    categories may legitimately share a subject name.
+
+    `ARTIFACTS WRITTEN` is empty for this command, and that is the honest
+    report of a read-only operation rather than a missing section.
+    """
+
+    from composition_root.evidence_platform import (
+        CANONICAL_REPOSITORY_NAMES,
+        EVIDENCE_PLATFORM_ERRORS,
+        read_repository_patterns,
+    )
+
+    if repository not in CANONICAL_REPOSITORY_NAMES:
+        _fail(
+            f"Unknown repository '{repository}'. Supported: {', '.join(CANONICAL_REPOSITORY_NAMES)}.",
+            as_json=json,
+        )
+
+    patterns_path = pattern_dir / f"{repository}-{version}.patterns.jsonl"
+    pattern_meta_path = pattern_dir / f"{repository}-{version}.meta.json"
+    if not patterns_path.is_file():
+        _fail(
+            f"No Pattern artifact at '{patterns_path}'. Run `architect patterns aggregate` first.",
+            as_json=json,
+        )
+
+    try:
+        pattern_set = read_repository_patterns(
+            patterns_path=patterns_path,
+            pattern_meta_path=pattern_meta_path,
+        )
+    except EVIDENCE_PLATFORM_ERRORS as exc:
+        # One `except` where `extract` and `aggregate` have two. Those
+        # build a pydantic request object, so a `ValidationError` can
+        # escape them; this command builds nothing, and
+        # `aggregation.persistence.read_pattern_set` converts every
+        # `ValueError` -- `ValidationError` included -- into
+        # `AggregationError_` before it returns. A second clause here
+        # would be unreachable code kept for symmetry's sake.
+        _fail(str(exc), as_json=json)
+
+    provenance = (
+        ("repository", pattern_set.repository.value),
+        ("version", pattern_set.version),
+        ("commit", pattern_set.commit),
+        ("aggregated at", pattern_set.aggregated_at),
+    )
+    # One row per category rather than per Pattern: `population_description`
+    # is a property of the denominator, identical for every Pattern in a
+    # category, so repeating it per row buried the counts in a wall of
+    # duplicated text (seen by running the command against the real
+    # corpus). Stated once, it also puts the denominator's definition in
+    # front of the reader before any share is quoted.
+    populations = tuple(
+        (f"population: {category}", description)
+        for category, description in {
+            pattern.evidence_category.value: pattern.population_description
+            for pattern in pattern_set.patterns
+        }.items()
+    )
+    measured = tuple(
+        (
+            f"pattern: {pattern.evidence_category.value} / {pattern.subject}",
+            f"{pattern.occurrences}/{pattern.population} (support {pattern.support:.4f})",
+        )
+        for pattern in pattern_set.patterns
+    )
+    below_threshold = tuple(
+        (
+            f"below threshold: {observed.evidence_category.value} / {observed.subject}",
+            str(observed.occurrences),
+        )
+        for observed in pattern_set.observed_below_threshold
+    )
+
+    output = CommandOutput(
+        summary=provenance + populations + measured + below_threshold,
+        skipped=tuple(
+            SKIPPED_AGGREGATION_TEMPLATE.format(
+                category=skipped.evidence_category.value,
+                status=skipped.status.value,
+                records=skipped.evidence_records_present,
+                reason=skipped.reason,
+            )
             for skipped in pattern_set.skipped_aggregations
         ),
         exit_code=EXIT_OK,
