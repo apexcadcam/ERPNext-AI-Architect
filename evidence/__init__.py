@@ -12,6 +12,7 @@ from evidence.contract import (
     EvidenceStatistics,
     Source,
 )
+from evidence.engine import extract_evidence
 from evidence.errors import EvidenceError_
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "EvidenceSet",
     "EvidenceStatistics",
     "Source",
+    "extract_evidence",
 ]
