@@ -1,8 +1,24 @@
 # CLI ARCHITECTURE
 
-**Status:** Foundational — Architecture Only, Not Implemented
+**Status:** Foundational — the design below is implemented in part; see the note that follows.
 **Authority:** Subordinate to [RUNTIME_ARCHITECTURE.md](RUNTIME_ARCHITECTURE.md).
-**Scope:** The unified `architect` command surface — a client of the Runtime, not a privileged backdoor into it. No code.
+**Scope:** The unified `architect` command surface — a client of the Runtime, not a privileged backdoor into it.
+
+---
+
+## 0. What is actually implemented
+
+This document is the original design. It is left as written; the table in §2 describes the intended surface, not the current one. The commands that exist today, in [`runtime/cli.py`](../../runtime/cli.py):
+
+| Command | Added by |
+|---|---|
+| `architect doctor`, `plugins list`, `runtime info`, `config validate` | Sprint 1 — as designed below |
+| `architect run-goal` | Sprint 14 (ADR-005), a disclosed additive exception to the Runtime freeze |
+| `architect evidence extract`, `patterns aggregate`, `patterns report` | The Evidence Platform — specified in [`docs/evidence-platform/CLI_SPECIFICATION.md`](../evidence-platform/CLI_SPECIFICATION.md) |
+
+`crawl`, `pipeline run`, `graph build`, `validate`, and `runtime start` remain unimplemented.
+
+§4's rule — structured output first, human-readable second, never two divergent code paths — is now enforced structurally rather than by convention: every Evidence Platform command builds one frozen `runtime.output.CommandOutput` and both renderers read from it.
 
 ---
 
