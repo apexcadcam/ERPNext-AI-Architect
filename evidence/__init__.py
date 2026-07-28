@@ -14,6 +14,7 @@ from evidence.contract import (
 )
 from evidence.engine import extract_evidence
 from evidence.errors import EvidenceError_
+from evidence.persistence import read_evidence_set, write_evidence_set
 
 __all__ = [
     "CanonicalRepository",
@@ -28,4 +29,6 @@ __all__ = [
     "EvidenceStatistics",
     "Source",
     "extract_evidence",
+    "read_evidence_set",
+    "write_evidence_set",
 ]
