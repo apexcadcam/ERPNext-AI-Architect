@@ -13,6 +13,7 @@ from aggregation.contract import (
 )
 from aggregation.engine import aggregate_patterns
 from aggregation.errors import AggregationError_
+from aggregation.persistence import read_pattern_set, write_pattern_set
 
 __all__ = [
     "AggregationError_",
@@ -26,4 +27,6 @@ __all__ = [
     "SkippedAggregation",
     "ThresholdSpec",
     "aggregate_patterns",
+    "read_pattern_set",
+    "write_pattern_set",
 ]
