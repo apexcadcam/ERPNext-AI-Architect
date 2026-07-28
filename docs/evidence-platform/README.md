@@ -23,6 +23,7 @@ One-directional. Aggregation consumes the *persisted* `EvidenceSet` and is struc
 | [`EVIDENCE_EXTRACTION_SPECIFICATION.md`](EVIDENCE_EXTRACTION_SPECIFICATION.md) | What a fact is, how it is traced, and what is deliberately not collected |
 | [`PATTERN_AGGREGATION_SPECIFICATION.md`](PATTERN_AGGREGATION_SPECIFICATION.md) | What a measurement is, when a denominator exists, and what happens when it does not |
 | [`CLI_SPECIFICATION.md`](CLI_SPECIFICATION.md) | The `architect` command surface and the Output Contract |
+| [`BACKLOG.md`](BACKLOG.md) | Open work items, with what "done" means for each |
 
 Section numbers cited in the source (`§2`, `§7.3`, …) refer to these documents.
 
