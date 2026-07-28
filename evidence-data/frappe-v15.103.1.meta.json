@@ -1,0 +1,17 @@
+{
+  "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
+  "correlation_id": "sprint20-validation",
+  "errors": [],
+  "evidence_set_id": "6aafff47-1c7d-44d9-9e88-3b4a20f1ddce",
+  "extracted_at": "2026-07-27T22:53:56.706587+00:00",
+  "repository": "frappe",
+  "schema_version": "1.0",
+  "statistics": {
+    "evidence_extracted": 812,
+    "files_examined": 46296,
+    "files_failed": 0,
+    "files_skipped": 44912
+  },
+  "truncated": false,
+  "version": "v15.103.1"
+}

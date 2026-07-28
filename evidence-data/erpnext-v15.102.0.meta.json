@@ -1,0 +1,17 @@
+{
+  "commit": "1d14ba16398db3a220873509565c60f2932bed81",
+  "correlation_id": "sprint20-validation",
+  "errors": [],
+  "evidence_set_id": "b51913f2-2b3c-4c7d-9adf-acfe7ae2d4af",
+  "extracted_at": "2026-07-27T22:54:23.320682+00:00",
+  "repository": "erpnext",
+  "schema_version": "1.0",
+  "statistics": {
+    "evidence_extracted": 1245,
+    "files_examined": 5938,
+    "files_failed": 0,
+    "files_skipped": 3522
+  },
+  "truncated": false,
+  "version": "v15.102.0"
+}
