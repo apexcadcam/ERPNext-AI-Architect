@@ -1,0 +1,48 @@
+{
+  "aggregated_at": "2026-07-28T16:50:20.744162+00:00",
+  "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
+  "correlation_id": "sprint21-validation",
+  "observed_below_threshold": [
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "cache_source"
+    },
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "deprecated"
+    },
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "no_wait"
+    },
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "redis_cache"
+    }
+  ],
+  "pattern_set_id": "3cbf3184-94fa-4781-9cb4-d02f979ef379",
+  "repository": "frappe",
+  "schema_version": "1.0",
+  "skipped_aggregations": [
+    {
+      "evidence_category": "controller_lifecycle_hook",
+      "evidence_records_present": 237,
+      "reason": "Not derivable from persisted Evidence alone. The collector emits a record only when a hook is found, so classes without hooks leave no trace: the numerator exists but the population does not. Measured against real ERPNext v15.102.0, the true population is at least 482 (448 direct 'class X(Document)' plus at least 34 via intermediate bases such as AccountsController, TransactionBase, StockController, BuyingController and SellingController), and multi-level inheritance chains remain unresolved even by that count. Aggregating anyway would yield a share of hook *records* wearing the label of a share of controllers. Requires a new Evidence category recording class definitions and their base classes (Sprint 22).",
+      "status": "skipped_no_population"
+    }
+  ],
+  "source_evidence_set_id": "6aafff47-1c7d-44d9-9e88-3b4a20f1ddce",
+  "statistics": {
+    "categories_aggregated": 1,
+    "categories_present": 2,
+    "categories_skipped": 1,
+    "evidence_records_consumed": 812,
+    "patterns_produced": 8,
+    "subjects_below_threshold": 4
+  },
+  "version": "v15.103.1"
+}

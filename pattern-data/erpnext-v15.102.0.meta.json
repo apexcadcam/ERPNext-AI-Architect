@@ -1,0 +1,43 @@
+{
+  "aggregated_at": "2026-07-28T16:50:20.791201+00:00",
+  "commit": "1d14ba16398db3a220873509565c60f2932bed81",
+  "correlation_id": "sprint21-validation",
+  "observed_below_threshold": [
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "deprecated"
+    },
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "redis_cache"
+    },
+    {
+      "evidence_category": "whitelisted_api_decoration",
+      "occurrences": 1,
+      "subject": "staticmethod"
+    }
+  ],
+  "pattern_set_id": "722e20fb-b44a-4e3c-a0dc-9da4f6be6fe4",
+  "repository": "erpnext",
+  "schema_version": "1.0",
+  "skipped_aggregations": [
+    {
+      "evidence_category": "controller_lifecycle_hook",
+      "evidence_records_present": 476,
+      "reason": "Not derivable from persisted Evidence alone. The collector emits a record only when a hook is found, so classes without hooks leave no trace: the numerator exists but the population does not. Measured against real ERPNext v15.102.0, the true population is at least 482 (448 direct 'class X(Document)' plus at least 34 via intermediate bases such as AccountsController, TransactionBase, StockController, BuyingController and SellingController), and multi-level inheritance chains remain unresolved even by that count. Aggregating anyway would yield a share of hook *records* wearing the label of a share of controllers. Requires a new Evidence category recording class definitions and their base classes (Sprint 22).",
+      "status": "skipped_no_population"
+    }
+  ],
+  "source_evidence_set_id": "b51913f2-2b3c-4c7d-9adf-acfe7ae2d4af",
+  "statistics": {
+    "categories_aggregated": 1,
+    "categories_present": 2,
+    "categories_skipped": 1,
+    "evidence_records_consumed": 1245,
+    "patterns_produced": 3,
+    "subjects_below_threshold": 3
+  },
+  "version": "v15.102.0"
+}
