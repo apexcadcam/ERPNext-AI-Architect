@@ -80,10 +80,12 @@ plugins_app = typer.Typer(help="Plugin Registry operations.", no_args_is_help=Tr
 runtime_app = typer.Typer(help="Runtime process operations.", no_args_is_help=True)
 config_app = typer.Typer(help="Configuration System operations.", no_args_is_help=True)
 evidence_app = typer.Typer(help="Evidence Platform — extraction operations.", no_args_is_help=True)
+patterns_app = typer.Typer(help="Evidence Platform — pattern operations.", no_args_is_help=True)
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(runtime_app, name="runtime")
 app.add_typer(config_app, name="config")
 app.add_typer(evidence_app, name="evidence")
+app.add_typer(patterns_app, name="patterns")
 
 
 #: Exit codes — CLI_ARCHITECTURE.md §5, deliberately small in Sprint 1
@@ -508,6 +510,10 @@ ExtractCommitOption = Annotated[
     str,
     typer.Option("--commit", help="Repository commit stamped on the Evidence (required: never auto-detected)."),
 ]
+AggregateVersionOption = Annotated[
+    str,
+    typer.Option("--version", help="Which persisted Evidence artifact to aggregate, by version."),
+]
 SourceRootOption = Annotated[
     Path | None,
     typer.Option("--source-root", help=f"Repository checkout to read (default: {DEFAULT_APPS_ROOT}/<repository>)."),
@@ -636,6 +642,114 @@ def evidence_extract(
         ),
         artifacts_written=(str(evidence_path), str(meta_path)),
         warnings=warnings,
+        exit_code=EXIT_OK,
+    )
+    emit_command_output(output, as_json=json)
+    raise typer.Exit(output.exit_code)
+
+
+#: Where `PatternSet` artifacts are written, matching the directory the
+#: committed corpus already occupies.
+DEFAULT_PATTERN_DIR = Path("pattern-data")
+
+EvidenceDirOption = Annotated[
+    Path, typer.Option("--evidence-dir", help="Directory holding the persisted Evidence artifacts.")
+]
+PatternDirOption = Annotated[
+    Path, typer.Option("--output-dir", help="Directory the Pattern artifacts are written to.")
+]
+MinOccurrencesOption = Annotated[
+    int | None,
+    typer.Option(
+        "--min-occurrences",
+        help="Occurrence floor below which a subject is recorded but not promoted to a Pattern "
+        "(default: the registered MIN_OCCURRENCES_THRESHOLD).",
+    ),
+]
+
+
+@patterns_app.command("aggregate")
+def patterns_aggregate(
+    repository: RepositoryArgument,
+    version: AggregateVersionOption,
+    evidence_dir: EvidenceDirOption = DEFAULT_EVIDENCE_DIR,
+    output_dir: PatternDirOption = DEFAULT_PATTERN_DIR,
+    min_occurrences: MinOccurrencesOption = None,
+    correlation_id: CorrelationIdOption = None,
+    json: JsonOption = False,
+) -> None:
+    """Aggregate a persisted `EvidenceSet` into a `PatternSet` and persist
+    it (Evidence Platform CLI Spec v1.1 §3.2).
+
+    Reads the Evidence artifact identified by `<repository>` and
+    `--version`; never re-runs extraction and never touches a source tree.
+
+    **Every number printed comes from the engine.** The `SUMMARY` rows are
+    `AggregationStatistics` fields verbatim — nothing here counts,
+    filters, or derives anything of its own.
+
+    **Every `SkippedAggregation` is printed with its `reason` in full**,
+    unedited and untruncated. That reason is the platform's own account of
+    a gap it can see but cannot yet measure (the controller-lifecycle-hook
+    denominator, today); shortening it for terminal tidiness would turn a
+    disclosed limitation back into a footnote.
+    """
+
+    from composition_root.evidence_platform import (
+        CANONICAL_REPOSITORY_NAMES,
+        DEFAULT_MIN_OCCURRENCES,
+        EVIDENCE_PLATFORM_ERRORS,
+        aggregate_repository_patterns,
+    )
+
+    if repository not in CANONICAL_REPOSITORY_NAMES:
+        _fail(
+            f"Unknown repository '{repository}'. Supported: {', '.join(CANONICAL_REPOSITORY_NAMES)}.",
+            as_json=json,
+        )
+
+    evidence_path = evidence_dir / f"{repository}-{version}.evidence.jsonl"
+    meta_path = evidence_dir / f"{repository}-{version}.meta.json"
+    if not evidence_path.is_file():
+        _fail(f"No Evidence artifact at '{evidence_path}'. Run `architect evidence extract` first.", as_json=json)
+
+    patterns_path = output_dir / f"{repository}-{version}.patterns.jsonl"
+    pattern_meta_path = output_dir / f"{repository}-{version}.meta.json"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        pattern_set = aggregate_repository_patterns(
+            evidence_path=evidence_path,
+            meta_path=meta_path,
+            patterns_path=patterns_path,
+            pattern_meta_path=pattern_meta_path,
+            min_occurrences=min_occurrences if min_occurrences is not None else DEFAULT_MIN_OCCURRENCES,
+            correlation_id=correlation_id or str(uuid.uuid4()),
+            requested_by="cli",
+        )
+    except EVIDENCE_PLATFORM_ERRORS as exc:
+        _fail(str(exc), as_json=json)
+    except ValidationError as exc:
+        _fail(_validation_message(exc), as_json=json)
+
+    statistics = pattern_set.statistics
+    output = CommandOutput(
+        summary=(
+            ("repository", pattern_set.repository.value),
+            ("version", pattern_set.version),
+            ("evidence records consumed", str(statistics.evidence_records_consumed)),
+            ("categories present", str(statistics.categories_present)),
+            ("categories aggregated", str(statistics.categories_aggregated)),
+            ("categories skipped", str(statistics.categories_skipped)),
+            ("patterns produced", str(statistics.patterns_produced)),
+            ("subjects below threshold", str(statistics.subjects_below_threshold)),
+        ),
+        artifacts_written=(str(patterns_path), str(pattern_meta_path)),
+        skipped=tuple(
+            f"{skipped.evidence_category.value} [{skipped.status.value}] "
+            f"— {skipped.evidence_records_present} Evidence record(s) present, not aggregated: {skipped.reason}"
+            for skipped in pattern_set.skipped_aggregations
+        ),
         exit_code=EXIT_OK,
     )
     emit_command_output(output, as_json=json)

@@ -46,7 +46,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from aggregation.contract import AggregationRequest, PatternSet
-from aggregation.engine import aggregate_patterns
+from aggregation.engine import MIN_OCCURRENCES_THRESHOLD, aggregate_patterns
 from aggregation.errors import AggregationError_
 from aggregation.persistence import read_pattern_set, write_pattern_set
 
@@ -68,6 +68,15 @@ CANONICAL_REPOSITORY_NAMES: tuple[str, ...] = tuple(repository.value for reposit
 #: exit code (§7) and cannot import `evidence.errors` or
 #: `aggregation.errors` to name them.
 EVIDENCE_PLATFORM_ERRORS: tuple[type[Exception], ...] = (EvidenceError_, AggregationError_)
+
+#: The registered minimum-occurrence threshold, as a plain int.
+#:
+#: Exposed so `architect patterns aggregate` defaults to the *registry's*
+#: value rather than repeating `2` in the CLI. The registry entry carries
+#: its own justification and `calibration_status`; a number copied into a
+#: command's signature would carry neither, and would silently stop
+#: tracking the registry the day it is recalibrated.
+DEFAULT_MIN_OCCURRENCES: int = MIN_OCCURRENCES_THRESHOLD.value
 
 
 def extract_repository_evidence(
