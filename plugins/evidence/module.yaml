@@ -1,0 +1,21 @@
+module_id: evidence
+display_name: Evidence Extraction
+maintained_by: evidence
+version: 0.1.0
+
+capabilities_provided:
+  - evidence.extract_evidence
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - extract_evidence
+
+# Evidence Extraction reads a pinned, read-only canonical reference source
+# tree and produces one self-contained artifact per run -- it publishes
+# and subscribes to nothing (Evidence Extraction Engine Architecture
+# Specification v1.1 §11: no ongoing behavior beyond what init() sets up).
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"
