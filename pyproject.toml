@@ -43,6 +43,7 @@ packages = [
     "evaluation",
     "recommendation",
     "evidence",
+    "aggregation",
 ]
 
 [tool.pytest.ini_options]

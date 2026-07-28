@@ -1,0 +1,26 @@
+module_id: aggregation
+display_name: Pattern Aggregation
+maintained_by: aggregation
+version: 0.1.0
+
+capabilities_provided:
+  - aggregation.aggregate_patterns
+capabilities_required: []
+
+pipeline_stage_bindings:
+  - aggregate_patterns
+
+# Pattern Aggregation consumes an already-persisted EvidenceSet and
+# produces one self-contained PatternSet per run -- it touches no source
+# tree and publishes/subscribes to nothing (Pattern Aggregation Engine
+# Architecture Specification v1.0 §12: no ongoing behavior beyond what
+# init() sets up).
+#
+# capabilities_required is empty even though this engine consumes
+# Evidence: the EvidenceSet arrives inside the AggregationRequest, read
+# from disk by the caller, never resolved from another module at runtime.
+events_published: []
+events_subscribed: []
+
+enabled_by_default: true
+entry_point: "module:create"
