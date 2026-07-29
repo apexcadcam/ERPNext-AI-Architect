@@ -4,10 +4,11 @@
 
 - Date opened: 2026-07-29
 - Date closed: 2026-07-29
-- Status: `Resolved` — the empirical question is answered. One **design decision remains open** and is stated in [Open Questions](#open-questions); it is a decision for review, not an unfinished investigation.
+- Status: `Resolved` — approved at review; the open design decision is settled by [ADR-0015](../adr/ADR-0015-cross-repository-inheritance-resolution.md).
 
 **Changelog**
 - 2026-07-29 — Opened and investigated (RQ-0002). Answers the question the Evidence Platform's own `SkippedAggregation` has been declaring since `v1.2.0`.
+- 2026-07-29 — Approved at review. Option 2 accepted: extraction records raw base names; the Aggregation layer resolves inheritance across corpora. Recorded as [ADR-0015](../adr/ADR-0015-cross-repository-inheritance-resolution.md), which adds one refinement — supporting corpora resolve inheritance but are never additional subjects, so a `PatternSet` still describes exactly one repository.
 
 ## Question
 
