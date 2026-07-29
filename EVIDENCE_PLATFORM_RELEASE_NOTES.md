@@ -1,7 +1,8 @@
 # Evidence Platform Release Notes — Sprints 20, 21 and the CLI
 
-**Releases:** `v1.1.0` (Evidence Extraction), `v1.2.0` (Pattern Aggregation), plus the CLI on `review/cli-evidence-platform`
-**Status:** Sprints 20 and 21 released and merged. CLI implemented and validated; approved for merge after documentation.
+**Releases:** `v1.1.0` (Evidence Extraction), `v1.2.0` (Pattern Aggregation), `v1.3.0` (CLI)
+**Status:** Released and merged. This document records the platform through `v1.3.0`; Sprint 22 is
+documented separately in [`SPRINT22_RELEASE_NOTES.md`](SPRINT22_RELEASE_NOTES.md).
 **Architecture reference:** [`docs/evidence-platform/`](docs/evidence-platform/) — three specifications, committed with this document
 **Frozen and unmodified:** Sprint 1 Runtime (except the disclosed CLI additions below), Sprints 2–15, and the Repository Intelligence Platform (`discovery`/`synthesis`/`evaluation`/`recommendation`, `v1.1.0-repository-intelligence`)
 
@@ -89,8 +90,8 @@ The full chain was re-run against the real checkouts and compared to the committ
 
 ## Known Limitations
 
-1. **The lifecycle-hook denominator gap.** 237 records in `frappe` and 476 in `erpnext` are counted but not aggregated. The population is not derivable from Evidence alone: the collector emits a record only where a hook was *found*, so classes without hooks leave no trace. The measured true population is at least 482 in ERPNext. Closing this requires a new Evidence category recording class definitions and their base classes — Sprint 22. The full reasoning is persisted in every `PatternSet` and printed by every `patterns aggregate` run.
-2. **One measurable category.** Every measured Pattern today shares a single population basis.
+1. **Closed in Sprint 22 (`v1.4.0`) — the lifecycle-hook denominator gap.** At `v1.3.0`, 237 records in `frappe` and 476 in `erpnext` were counted but not aggregated. Sprint 22 added class-definition Evidence and inheritance resolution; the measured populations are now 275 and 510 respectively. See the [Sprint 22 Release Notes](SPRINT22_RELEASE_NOTES.md).
+2. **Closed in Sprint 22 (`v1.4.0`) — one measurable category.** Both behavioural categories now have a derivable population.
 3. **Two repositories.** `CanonicalRepository` is a closed enum of `frappe` and `erpnext`.
 4. **Cross-repository comparison is undefined**, deliberately, and has no command surface.
 5. **Evidence artifacts are not byte-reproducible.** Each record carries a `collected_at` wall-clock timestamp, correctly excluded from `evidence_id`. Re-extraction therefore shows every line of `evidence-data/` as changed under `git diff` even when nothing substantive did. Pattern artifacts do not have this property. Not a defect — the determinism contract exempts timestamps — but worth a decision in a future sprint.
@@ -99,6 +100,6 @@ The full chain was re-run against the real checkouts and compared to the committ
 
 ## Follow-up Work
 
-- **Sprint 22 — class-definition Evidence**, which closes limitation 1. The skip reason names it explicitly.
+- **CLI supporting corpora** — expose Sprint 22's cross-repository resolution through `architect patterns aggregate --supporting …`; the API and persisted provenance already support it.
 - **`hrms`** — 613 `.py` files, officially maintained by Frappe Technologies, and ranked `KS-0033` / rank #1 / P0 in this project's own [`knowledge-sources/KNOWLEDGE_SOURCE_CATALOG.md`](knowledge-sources/KNOWLEDGE_SOURCE_CATALOG.md) while the engine currently rejects it. Adding it is a contract change with its own review, and it needs one question settled first: 90% adoption inside `frappe` means *this is the standard*, while 90% inside a consumer application means something different. The corpus must not blur the two.
 - **Sprint 23 — Candidate Rules**, and **Sprint 24 — Verification**, where `confidence` finally gets its meaning.

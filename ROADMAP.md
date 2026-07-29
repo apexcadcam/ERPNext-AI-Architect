@@ -76,4 +76,11 @@ Once an Agent needs to actually *do* something against a live bench (read a file
 
 **Phase 1 — Repository Foundation: complete.** **Phase 2 — Knowledge Engineering: active**, currently in Stage 1. `rules/` contains ten rules (`R001`–`R010`), all migrated to the canonical format. `research/` has produced its first research file ([RQ-0001](research/RQ-0001-native-first-discovery.md)) — see [research/README.md](research/README.md) for the ongoing backlog. Stages 2–4 have not started; their folders exist only so the intended shape of the repository is visible, per each folder's own README.
 
-**Evidence Platform: released at `v1.3.0`.** Extraction, Aggregation, and the `architect` CLI are implemented, validated against both canonical repositories, and documented in [docs/evidence-platform/](docs/evidence-platform/). Next work item is **Sprint 22 — class-definition Evidence**, which closes the platform's one declared measurement gap; the full item list, with what "done" means for each, is in [docs/evidence-platform/BACKLOG.md](docs/evidence-platform/BACKLOG.md).
+**Evidence Platform: released at `v1.4.0`.** Extraction, Aggregation, and the `architect` CLI are
+implemented and validated against both canonical repositories. Sprint 22 added class-definition
+Evidence and cross-repository inheritance resolution, closing the platform's one declared measurement
+gap: lifecycle-hook populations are now measured at 275 controllers in `frappe` and 510 in `erpnext`
+when `frappe` is supplied as resolution context. See [Sprint 22 Release Notes](SPRINT22_RELEASE_NOTES.md)
+and the remaining [Evidence Platform backlog](docs/evidence-platform/BACKLOG.md). The immediate follow-up
+is exposing supporting corpora through the CLI; after that, **Sprint 23 — Candidate Rules** can consume
+the measured Patterns through the required human review gate.

@@ -32,7 +32,9 @@ architect patterns report erpnext --version v15.102.0
 
 Extraction emits one record per single observed fact; aggregation turns those into measured Patterns — but only where a denominator genuinely exists. Where it does not, the platform records a typed, persisted skip stating exactly why, rather than quoting a ratio it cannot support.
 
-Full design, current measurements, and known limits: **[docs/evidence-platform/](docs/evidence-platform/)** and the [Evidence Platform Release Notes](EVIDENCE_PLATFORM_RELEASE_NOTES.md).
+Full design, current measurements, and known limits: **[docs/evidence-platform/](docs/evidence-platform/)**,
+the [Evidence Platform Release Notes through v1.3.0](EVIDENCE_PLATFORM_RELEASE_NOTES.md), and the
+[Sprint 22 / v1.4.0 Release Notes](SPRINT22_RELEASE_NOTES.md).
 
 ## Repository layout
 
