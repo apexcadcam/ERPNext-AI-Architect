@@ -12,6 +12,8 @@ Ordered by dependency, not by size: **W5 unblocks the platform's central limitat
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
 | [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | **Yes** — blocks category 2 |
 
+The release validation report numbered three of these as findings; the mapping, so the two vocabularies do not drift apart: **F1 → W4** (timestamps), **F2 → W1** (typing), **F3 → W2** (formatting). `W` identifiers are the ones to use from here.
+
 ---
 
 ## W1 — Repository-wide typing cleanup
@@ -126,3 +128,19 @@ The engine refuses to divide anyway, and records a persisted `SkippedAggregation
 - The corpus is regenerated and committed.
 
 **Watch for:** the resolved population must count classes, not records, and must not silently include classes from a different repository in the same run.
+
+### The check to run afterwards, and how to frame it
+
+Re-run the full chain and compare against the `v1.3.0` corpus — but **the comparison that matters is a regression check, not an impact measurement.**
+
+There is nothing to compare for lifecycle hooks: today they are not measured at all, so "before" is empty and any "after" is new information rather than a delta. What *is* comparable is the category that already works:
+
+| Quantity | Expected after Sprint 22 |
+|---|---|
+| `whitelisted_api_decoration` occurrences, population, support | **Identical** — 518/520 and 15/520 for `frappe`, 705/705 and 59/705 for `erpnext` |
+| Every existing `pattern_id` | **Identical** — the hash covers repository, version, commit, category, subject, none of which change |
+| `categories_present` | 2 → 3 |
+| `categories_skipped` | 1 → 0 |
+| Existing `evidence_id` values | **Identical** — new records are added; none of the old ones move |
+
+Any drift in row one or two means the new collector perturbed the existing category, which would be a defect in the new work rather than a finding about the corpus. That is the real value of re-running: adding a third Evidence category must be **purely additive** to the two that exist.
