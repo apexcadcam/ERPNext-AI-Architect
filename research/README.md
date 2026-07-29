@@ -41,5 +41,6 @@ Not yet researched. This is a backlog, not findings — each topic below is a ca
 | Custom Fields | Custom Field vs. Property Setter vs. new DocType — the actual decision boundary | Not started |
 | Website | Customizing the ERPNext/Frappe website layer without touching core | Not started |
 | Native-First Discovery | The concrete "how" behind [R002](../rules/R002-native-first-discovery.md)'s discovery principle | Resolved → [RQ-0001](RQ-0001-native-first-discovery.md) |
+| Controller Lifecycle Hook Population | Which classes a lifecycle hook could appear on, and whether that set is statically derivable — the precondition for the Evidence Platform's one unmeasurable category | Resolved → [RQ-0002](RQ-0002-controller-lifecycle-hook-population.md) |
 
 Add new topics to this table as questions come up. When a topic is investigated, either promote it to a Rule and mark it `Done → R0NN`, or leave a research note in this folder and link it here.
