@@ -629,6 +629,20 @@ def test_aggregation_statistics_rejects_negative_counts() -> None:
         )
 
 
+def test_aggregation_statistics_rejects_incomplete_category_accounting() -> None:
+    # Sprint 22 Decision D15: every candidate category is either aggregated
+    # or skipped. A third, silently unaccounted state is unrepresentable.
+    with pytest.raises(ValidationError, match="every candidate category is one or the other"):
+        AggregationStatistics(
+            evidence_records_consumed=10,
+            categories_present=2,
+            categories_aggregated=1,
+            categories_skipped=0,
+            patterns_produced=1,
+            subjects_below_threshold=0,
+        )
+
+
 # -- PatternSet ---------------------------------------------------------------------------------------
 
 
