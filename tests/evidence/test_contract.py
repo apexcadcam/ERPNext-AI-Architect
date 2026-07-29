@@ -59,18 +59,123 @@ def test_evidence_kind_defines_exactly_the_documented_value() -> None:
     assert {member.value for member in EvidenceKind} == {"implementation"}
 
 
-def test_evidence_category_defines_exactly_the_two_documented_values() -> None:
+def test_evidence_category_defines_exactly_the_four_documented_values() -> None:
+    # Two v1 signal categories, plus Sprint 22's two structural ones.
     assert {member.value for member in EvidenceCategory} == {
         "controller_lifecycle_hook",
         "whitelisted_api_decoration",
+        "class_definition",
+        "class_base_declaration",
     }
 
 
-def test_collector_name_defines_exactly_the_two_documented_values() -> None:
+def test_the_structural_categories_are_a_pair() -> None:
+    # Inheritance Resolution §2.1. They are only meaningful together: the
+    # definition records are the node set, the base declarations are the
+    # edge set. If either were ever removed, a class with no declared
+    # bases would stop being representable -- which is exactly the blind
+    # spot that made the lifecycle-hook population underivable.
+    values = {member.value for member in EvidenceCategory}
+    assert ("class_definition" in values) == ("class_base_declaration" in values)
+
+
+def test_collector_name_defines_exactly_the_three_documented_values() -> None:
+    # One new collector, not two: a single AST pass emits both structural
+    # categories (§2.4).
     assert {member.value for member in CollectorName} == {
         "controller_lifecycle_hook_collector",
         "whitelisted_api_decoration_collector",
+        "class_definition_collector",
     }
+
+
+# -- The structural categories (Sprint 22, Inheritance Resolution §2) -----------------------------------
+
+
+def test_a_class_definition_is_representable() -> None:
+    evidence = _evidence(
+        category=EvidenceCategory.CLASS_DEFINITION,
+        symbol="erpnext.controllers.accounts_controller.AccountsController",
+        subject="AccountsController",
+        collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
+    )
+    assert evidence.category is EvidenceCategory.CLASS_DEFINITION
+    assert evidence.subject == "AccountsController"
+
+
+def test_a_class_that_declares_no_base_is_still_fully_representable() -> None:
+    # The invariant the two-category split exists to guarantee. A class
+    # with no bases produces a definition record and no edge records, and
+    # is therefore still present in the corpus -- unlike a design where
+    # only "X declares base B" is recorded, under which it would vanish.
+    evidence = _evidence(
+        category=EvidenceCategory.CLASS_DEFINITION,
+        symbol="erpnext.utilities.transaction_base.Plain",
+        subject="Plain",
+        collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
+    )
+    assert evidence.symbol.endswith(".Plain")
+
+
+def test_a_base_declaration_records_the_base_name_as_written() -> None:
+    # Raw fact, not a resolved reference (ADR-0015). Both spellings occur
+    # in the real trees and both must survive into the corpus unchanged;
+    # reconciling them is the resolver's job, downstream.
+    bare = _evidence(
+        category=EvidenceCategory.CLASS_BASE_DECLARATION,
+        symbol="erpnext.selling.doctype.customer.customer.Customer",
+        subject="Document",
+        collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
+    )
+    dotted = _evidence(
+        category=EvidenceCategory.CLASS_BASE_DECLARATION,
+        symbol="erpnext.selling.doctype.customer.customer.Customer",
+        subject="frappe.model.document.Document",
+        collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
+    )
+    assert bare.subject == "Document"
+    assert dotted.subject == "frappe.model.document.Document"
+
+
+def test_a_class_with_two_bases_is_two_separate_records() -> None:
+    # Atomicity (§5): one record per observed fact, exactly as a function
+    # with three decorators produces three records.
+    symbol = "erpnext.selling.doctype.customer.customer.Customer"
+    records = [
+        _evidence(
+            category=EvidenceCategory.CLASS_BASE_DECLARATION,
+            symbol=symbol,
+            subject=base,
+            collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
+        )
+        for base in ("Document", "NestedSet")
+    ]
+    assert [record.subject for record in records] == ["Document", "NestedSet"]
+
+
+def test_the_structural_categories_round_trip_through_json() -> None:
+    for category in (EvidenceCategory.CLASS_DEFINITION, EvidenceCategory.CLASS_BASE_DECLARATION):
+        evidence = _evidence(category=category, collector=CollectorName.CLASS_DEFINITION_COLLECTOR)
+        assert Evidence.model_validate_json(evidence.model_dump_json()) == evidence
+
+
+def test_evidence_carries_no_inheritance_inference_field() -> None:
+    # ADR-0015: the collector records facts; descent is computed
+    # downstream and never asserted in the artifact. If any of these ever
+    # appears, an inference has been frozen into a record that claims to
+    # state a fact.
+    fields = set(Evidence.model_fields)
+    for forbidden in (
+        "is_document_subclass",
+        "resolved_base",
+        "resolved_bases",
+        "base_classes",
+        "depth",
+        "is_abstract",
+        "doctype",
+        "ancestry",
+    ):
+        assert forbidden not in fields
 
 
 # -- Source --------------------------------------------------------------------------------------------

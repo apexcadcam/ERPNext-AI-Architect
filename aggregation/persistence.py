@@ -44,6 +44,11 @@ _META_FIELDS: tuple[str, ...] = (
     "skipped_aggregations",
     "observed_below_threshold",
     "statistics",
+    # Sprint 22. Written because a population that can be derived from
+    # more than one corpus is not reproducible without recording which
+    # corpora produced it -- 510 and 492 are both defensible ERPNext
+    # figures differing only by what was supplied.
+    "resolution_provenance",
 )
 
 

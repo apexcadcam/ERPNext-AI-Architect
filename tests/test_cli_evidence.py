@@ -92,10 +92,13 @@ def test_extract_reports_the_engines_own_statistics(source_root: Path, output_di
     result = runner.invoke(app, _args(source_root, output_dir, "--json"))
     payload = json_module.loads(result.stdout)
 
-    # Two .py files in the fixture; three Evidence records (two lifecycle
-    # hooks plus one whitelist decoration).
+    # Two .py files in the fixture. Four Evidence records: two lifecycle
+    # hooks, one whitelist decoration, and — since Sprint 22 — one class
+    # definition for `class Customer:`, which declares no base and so
+    # contributes a node record and no edge record. The CLI reports
+    # whatever the engine counted; this asserts it counts nothing itself.
     assert payload["summary"]["files examined"] == "2"
-    assert payload["summary"]["evidence extracted"] == "3"
+    assert payload["summary"]["evidence extracted"] == "4"
     assert payload["summary"]["files failed"] == "0"
 
 

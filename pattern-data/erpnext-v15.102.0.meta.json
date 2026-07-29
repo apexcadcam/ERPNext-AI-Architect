@@ -1,7 +1,7 @@
 {
-  "aggregated_at": "2026-07-28T16:50:20.791201+00:00",
+  "aggregated_at": "2026-07-29T15:02:58.542827+00:00",
   "commit": "1d14ba16398db3a220873509565c60f2932bed81",
-  "correlation_id": "sprint21-validation",
+  "correlation_id": "sprint22-corpus",
   "observed_below_threshold": [
     {
       "evidence_category": "whitelisted_api_decoration",
@@ -19,24 +19,33 @@
       "subject": "staticmethod"
     }
   ],
-  "pattern_set_id": "722e20fb-b44a-4e3c-a0dc-9da4f6be6fe4",
+  "pattern_set_id": "ebb73c2c-8175-47f7-9bd2-44fa1e36b6dd",
   "repository": "erpnext",
-  "schema_version": "1.0",
-  "skipped_aggregations": [
-    {
-      "evidence_category": "controller_lifecycle_hook",
-      "evidence_records_present": 476,
-      "reason": "Not derivable from persisted Evidence alone. The collector emits a record only when a hook is found, so classes without hooks leave no trace: the numerator exists but the population does not. Measured against real ERPNext v15.102.0, the true population is at least 482 (448 direct 'class X(Document)' plus at least 34 via intermediate bases such as AccountsController, TransactionBase, StockController, BuyingController and SellingController), and multi-level inheritance chains remain unresolved even by that count. Aggregating anyway would yield a share of hook *records* wearing the label of a share of controllers. Requires a new Evidence category recording class definitions and their base classes (Sprint 22).",
-      "status": "skipped_no_population"
-    }
-  ],
-  "source_evidence_set_id": "b51913f2-2b3c-4c7d-9adf-acfe7ae2d4af",
+  "resolution_provenance": {
+    "measured_corpus": {
+      "commit": "1d14ba16398db3a220873509565c60f2932bed81",
+      "repository": "erpnext",
+      "version": "v15.102.0"
+    },
+    "strategy": "multi_corpus",
+    "supporting_corpora": [
+      {
+        "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
+        "repository": "frappe",
+        "version": "v15.103.1"
+      }
+    ],
+    "unresolved_bases_count": 4
+  },
+  "schema_version": "2.0",
+  "skipped_aggregations": [],
+  "source_evidence_set_id": "5098874e-767a-43b2-9273-a798360aa813",
   "statistics": {
-    "categories_aggregated": 1,
+    "categories_aggregated": 2,
     "categories_present": 2,
-    "categories_skipped": 1,
-    "evidence_records_consumed": 1245,
-    "patterns_produced": 3,
+    "categories_skipped": 0,
+    "evidence_records_consumed": 3260,
+    "patterns_produced": 14,
     "subjects_below_threshold": 3
   },
   "version": "v15.102.0"

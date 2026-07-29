@@ -17,7 +17,13 @@ from evidence.contract import (
     Source,
 )
 
-from aggregation.contract import AggregationRequest, AggregationStatus
+from aggregation.contract import (
+    AggregationRequest,
+    AggregationStatus,
+    PatternSet,
+    PopulationBasis,
+    ResolutionStrategy,
+)
 from aggregation.engine import MIN_OCCURRENCES_THRESHOLD, aggregate_patterns
 
 _COMMIT = "1d14ba16398db3a220873509565c60f2932bed81"
@@ -194,9 +200,11 @@ def test_the_skip_carries_a_machine_readable_status_and_a_real_record_count() ->
     assert skip.reason.strip() != ""
 
 
-def test_the_skip_reason_is_the_matrix_blocker() -> None:
-    # The reason must be the matrix's own stated blocker, so a consumer
-    # gets the real cause rather than a generic message.
+def test_lifecycle_hooks_without_a_resolvable_population_still_skip() -> None:
+    # Sprint 22 made the category aggregatable, not unconditionally
+    # measurable. Hook records with no class-definition Evidence beside
+    # them resolve to an empty population, and an empty denominator is
+    # still a recorded skip rather than a fabricated number.
     hooks = [
         _evidence(
             symbol="erpnext.C.validate",
@@ -207,7 +215,8 @@ def test_the_skip_reason_is_the_matrix_blocker() -> None:
 
     result = aggregate_patterns(_request(*hooks))
 
-    assert "Sprint 22" in result.skipped_aggregations[0].reason
+    assert result.skipped_aggregations[0].reason == "the resolved population is empty"
+    assert result.patterns == ()
 
 
 def test_a_skipped_category_produces_no_patterns_at_all() -> None:
@@ -467,7 +476,7 @@ def test_the_pattern_set_echoes_the_evidence_sets_provenance() -> None:
     assert result.repository is CanonicalRepository.ERPNEXT
     assert result.version == "v15.102.0"
     assert result.commit == _COMMIT
-    assert result.schema_version == "1.0"
+    assert result.schema_version == "2.0"
 
 
 def test_every_pattern_echoes_the_provenance_too() -> None:
@@ -513,3 +522,205 @@ def test_an_empty_evidence_set_produces_a_valid_empty_pattern_set() -> None:
 def test_correlation_id_is_carried_from_the_request() -> None:
     result = aggregate_patterns(_request(*_whitelisted("erpnext.api.a"), *_whitelisted("erpnext.api.b")))
     assert result.correlation_id == "corr-1"
+
+
+# -- Sprint 22: structural evidence, resolved populations, and provenance --------------------------------
+
+
+def _class(name: str, *bases: str, module: str = "erpnext.mod") -> list[Evidence]:
+    """A class definition record plus one base-declaration record per base
+    -- the exact shape `collect_class_definition_evidence` emits.
+    """
+
+    symbol = f"{module}.{name}"
+    records = [_evidence(symbol=symbol, subject=name, category=EvidenceCategory.CLASS_DEFINITION)]
+    records.extend(
+        _evidence(symbol=symbol, subject=base, category=EvidenceCategory.CLASS_BASE_DECLARATION)
+        for base in bases
+    )
+    return records
+
+
+def _hook(class_name: str, hook: str, module: str = "erpnext.mod") -> Evidence:
+    return _evidence(
+        symbol=f"{module}.{class_name}.{hook}",
+        subject=hook,
+        category=EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK,
+    )
+
+
+def test_structural_evidence_is_neither_measured_nor_skipped() -> None:
+    # Requirement 3. Class definitions are topology, not signal. Letting
+    # them reach the matrix's default-deny would file them as "we could
+    # not measure this", which is the wrong claim -- nobody tried, because
+    # there is nothing there to measure. A declared gap that is not a gap
+    # devalues the ones that are.
+    records = [*_class("A", "Document"), *_class("B", "Document")]
+    result = aggregate_patterns(_request(*records))
+
+    reported = {pattern.evidence_category for pattern in result.patterns}
+    skipped = {entry.evidence_category for entry in result.skipped_aggregations}
+    structural = {EvidenceCategory.CLASS_DEFINITION, EvidenceCategory.CLASS_BASE_DECLARATION}
+
+    assert reported & structural == set()
+    assert skipped & structural == set()
+    assert result.statistics.categories_present == 0
+
+
+def test_structural_records_are_still_counted_as_consumed() -> None:
+    # They were read, and the population depends on them -- reporting
+    # otherwise would understate what the artifact was built from.
+    records = [*_class("A", "Document"), *_class("B", "Document")]
+    result = aggregate_patterns(_request(*records))
+
+    assert result.statistics.evidence_records_consumed == len(records)
+
+
+def test_lifecycle_hooks_are_measured_against_the_resolved_class_graph() -> None:
+    records = [
+        *_class("A", "Document"),
+        *_class("B", "Document"),
+        *_class("C", "B"),
+        *_class("Unrelated"),
+        _hook("A", "validate"),
+        _hook("B", "validate"),
+    ]
+    result = aggregate_patterns(_request(*records))
+
+    hooks = [
+        pattern
+        for pattern in result.patterns
+        if pattern.evidence_category is EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK
+    ]
+    assert len(hooks) == 1
+    # A, B and C descend from Document; `Unrelated` does not.
+    assert hooks[0].population == 3
+    assert hooks[0].occurrences == 2
+    assert hooks[0].support == 2 / 3
+
+
+def test_a_supporting_corpus_enlarges_the_population_without_joining_it() -> None:
+    # The cross-repository case, in miniature. `Mixin` lives in frappe and
+    # completes ERPNext's chain; it must not itself be counted.
+    supporting = EvidenceSet(
+        evidence_set_id="evset-frappe",
+        schema_version="1.0",
+        repository=CanonicalRepository.FRAPPE,
+        version="v15.103.1",
+        commit=_COMMIT,
+        extracted_at="2026-07-27T12:00:00+00:00",
+        correlation_id="corr-1",
+        evidence=tuple(_class("Mixin", "Document", module="frappe.utils")),
+        errors=(),
+        truncated=False,
+        statistics=EvidenceStatistics(
+            files_examined=1, files_skipped=0, files_failed=0, evidence_extracted=2
+        ),
+    )
+    records = [*_class("A", "Document"), *_class("B", "Mixin"), _hook("A", "validate")]
+
+    alone = aggregate_patterns(_request(*records, min_occurrences=1))
+    with_support = aggregate_patterns(
+        AggregationRequest(
+            evidence_set=_evidence_set(*records),
+            supporting_evidence_sets=(supporting,),
+            min_occurrences=1,
+            correlation_id="corr-1",
+            requested_by="test-suite",
+        )
+    )
+
+    def population(result: PatternSet) -> int:
+        return next(
+            pattern.population
+            for pattern in result.patterns
+            if pattern.evidence_category is EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK
+        )
+
+    assert population(alone) == 1  # only A resolves
+    assert population(with_support) == 2  # B now resolves through frappe's Mixin
+    # frappe's own Mixin is never counted into ERPNext's population.
+    assert all(pattern.repository is CanonicalRepository.ERPNEXT for pattern in with_support.patterns)
+
+
+def test_resolution_provenance_records_a_single_corpus_run() -> None:
+    records = [*_class("A", "Document"), _hook("A", "validate")]
+    result = aggregate_patterns(_request(*records, min_occurrences=1))
+
+    provenance = result.resolution_provenance
+    assert provenance is not None
+    assert provenance.strategy is ResolutionStrategy.SINGLE_CORPUS
+    assert provenance.supporting_corpora == ()
+    assert provenance.measured_corpus.repository is CanonicalRepository.ERPNEXT
+    assert provenance.measured_corpus.commit == _COMMIT
+
+
+def test_resolution_provenance_records_every_supporting_corpus() -> None:
+    supporting = EvidenceSet(
+        evidence_set_id="evset-frappe",
+        schema_version="1.0",
+        repository=CanonicalRepository.FRAPPE,
+        version="v15.103.1",
+        commit=_COMMIT,
+        extracted_at="2026-07-27T12:00:00+00:00",
+        correlation_id="corr-1",
+        evidence=tuple(_class("Mixin", "Document", module="frappe.utils")),
+        errors=(),
+        truncated=False,
+        statistics=EvidenceStatistics(
+            files_examined=1, files_skipped=0, files_failed=0, evidence_extracted=2
+        ),
+    )
+    records = [*_class("A", "Document"), _hook("A", "validate")]
+    result = aggregate_patterns(
+        AggregationRequest(
+            evidence_set=_evidence_set(*records),
+            supporting_evidence_sets=(supporting,),
+            min_occurrences=1,
+            correlation_id="corr-1",
+            requested_by="test-suite",
+        )
+    )
+
+    provenance = result.resolution_provenance
+    assert provenance is not None
+    assert provenance.strategy is ResolutionStrategy.MULTI_CORPUS
+    assert [ref.repository for ref in provenance.supporting_corpora] == [CanonicalRepository.FRAPPE]
+    assert provenance.supporting_corpora[0].version == "v15.103.1"
+
+
+def test_provenance_is_absent_when_no_population_needed_resolution() -> None:
+    # `None` means "no population in this artifact was derived from the
+    # class graph" -- a statement, not a missing value.
+    result = aggregate_patterns(_request(*_whitelisted("erpnext.api.a"), *_whitelisted("erpnext.api.b")))
+
+    assert result.resolution_provenance is None
+
+
+def test_provenance_counts_the_unresolved_residue() -> None:
+    records = [*_class("A", "Document"), *_class("E", "Exception"), _hook("A", "validate")]
+    result = aggregate_patterns(_request(*records, min_occurrences=1))
+
+    assert result.resolution_provenance is not None
+    assert result.resolution_provenance.unresolved_bases_count == 1
+
+
+def test_a_matrix_declared_skip_still_reports_its_blocker(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No category is matrix-skipped since Sprint 22 closed the last one,
+    # so this path is exercised against a substituted registry rather than
+    # deleted -- it is the mechanism that keeps a *future* declared gap
+    # reportable.
+    import aggregation.engine as engine_module
+
+    blocked = PopulationBasis(
+        evidence_category=EvidenceCategory.WHITELISTED_API_DECORATION,
+        status=AggregationStatus.SKIPPED_NO_POPULATION,
+        description="stand-in",
+        blocker="a stated, disclosed blocker",
+    )
+    monkeypatch.setattr(engine_module, "get_population_basis", lambda category: blocked)
+
+    result = aggregate_patterns(_request(*_whitelisted("erpnext.api.a")))
+
+    assert result.skipped_aggregations[0].reason == "a stated, disclosed blocker"
+    assert result.patterns == ()

@@ -12,11 +12,13 @@ from evidence.collectors import (
     _dotted_name,
     _is_whitelist_decorator,
     _module_dotted_name,
+    _qualified_class_symbol,
     _qualified_symbol,
+    collect_class_definition_evidence,
     collect_controller_lifecycle_hook_evidence,
     collect_whitelisted_api_decoration_evidence,
 )
-from evidence.contract import CanonicalRepository, CollectorName, EvidenceCategory
+from evidence.contract import CanonicalRepository, CollectorName, Evidence, EvidenceCategory
 
 
 def _context(relative_path: str = "frappe/model/document.py") -> _FileContext:
@@ -386,3 +388,201 @@ def test_collect_decoration_evidence_is_deterministic_across_repeated_calls() ->
     second = collect_whitelisted_api_decoration_evidence(tree, context)
 
     assert first == second
+
+
+# -- Collector 3: class definitions and inheritance edges (Sprint 22) -----------------------------------
+
+
+def _structural(
+    source: str, relative_path: str = "erpnext/controllers/accounts_controller.py"
+) -> tuple[Evidence, ...]:
+    tree = ast.parse(source)
+    return collect_class_definition_evidence(tree, _context(relative_path))
+
+
+def _by_category(records: tuple[Evidence, ...], category: EvidenceCategory) -> list[Evidence]:
+    return [record for record in records if record.category is category]
+
+
+def test_a_class_with_no_bases_still_emits_exactly_one_definition_record() -> None:
+    # The invariant this collector exists to guarantee. The two existing
+    # collectors emit only where something is found, which is why the
+    # lifecycle-hook denominator did not exist; a class with no bases
+    # must not vanish the same way.
+    records = _structural("class Plain:\n    pass\n")
+
+    definitions = _by_category(records, EvidenceCategory.CLASS_DEFINITION)
+    edges = _by_category(records, EvidenceCategory.CLASS_BASE_DECLARATION)
+    assert len(definitions) == 1
+    assert edges == []
+    assert definitions[0].subject == "Plain"
+    assert definitions[0].symbol == "erpnext.controllers.accounts_controller.Plain"
+
+
+def test_a_class_with_one_base_emits_a_definition_and_one_edge() -> None:
+    records = _structural("class Customer(Document):\n    pass\n")
+
+    assert len(_by_category(records, EvidenceCategory.CLASS_DEFINITION)) == 1
+    edges = _by_category(records, EvidenceCategory.CLASS_BASE_DECLARATION)
+    assert [edge.subject for edge in edges] == ["Document"]
+
+
+def test_a_class_with_multiple_bases_emits_one_edge_each_in_written_order() -> None:
+    # Atomicity: one record per observed fact, never one record bundling
+    # the base list -- the same rule that makes three decorators three
+    # records rather than one.
+    records = _structural("class Customer(Document, NestedSet, WebsiteGenerator):\n    pass\n")
+
+    edges = _by_category(records, EvidenceCategory.CLASS_BASE_DECLARATION)
+    assert [edge.subject for edge in edges] == ["Document", "NestedSet", "WebsiteGenerator"]
+    assert len({edge.evidence_id for edge in edges}) == 3
+
+
+def test_a_qualified_base_name_is_recorded_exactly_as_written() -> None:
+    # Never normalised. Both spellings occur in the real trees, and
+    # reconciling them is the resolver's job -- doing it here would freeze
+    # an inference into a record that claims to state a fact.
+    records = _structural("class Customer(frappe.model.document.Document):\n    pass\n")
+
+    edges = _by_category(records, EvidenceCategory.CLASS_BASE_DECLARATION)
+    assert [edge.subject for edge in edges] == ["frappe.model.document.Document"]
+
+
+def test_an_imported_base_name_is_recorded_without_resolving_the_import() -> None:
+    # `from frappe.utils.nestedset import NestedSet` then `class X(NestedSet)`
+    # records `NestedSet`, not the module it came from. RQ-0002 F6 found 14
+    # ERPNext classes reaching Document this way, across a repository
+    # boundary -- which is exactly why resolution cannot happen here.
+    source = "from frappe.utils.nestedset import NestedSet\n\n\nclass Account(NestedSet):\n    pass\n"
+    records = _structural(source)
+
+    edges = _by_category(records, EvidenceCategory.CLASS_BASE_DECLARATION)
+    assert [edge.subject for edge in edges] == ["NestedSet"]
+
+
+def test_the_collector_records_no_inheritance_verdict() -> None:
+    # Nothing in the emitted records says "descends from Document".
+    records = _structural("class Customer(Document):\n    pass\n")
+
+    for record in records:
+        assert "Document" not in record.symbol
+        assert record.collector is CollectorName.CLASS_DEFINITION_COLLECTOR
+    subjects = {record.subject for record in records}
+    assert subjects == {"Customer", "Document"}
+
+
+def test_nested_classes_are_collected_at_the_same_depth_as_the_hook_collector() -> None:
+    source = "class Outer(Document):\n    class Inner(Base):\n        def validate(self):\n            pass\n"
+    records = _structural(source)
+
+    definitions = _by_category(records, EvidenceCategory.CLASS_DEFINITION)
+    assert {definition.subject for definition in definitions} == {"Outer", "Inner"}
+
+
+def test_a_metaclass_keyword_is_not_recorded_as_a_base() -> None:
+    # `metaclass=` lives in ClassDef.keywords, not ClassDef.bases. It is
+    # not an inheritance edge and must not become one.
+    records = _structural("class Meta(Document, metaclass=abc.ABCMeta):\n    pass\n")
+
+    edges = _by_category(records, EvidenceCategory.CLASS_BASE_DECLARATION)
+    assert [edge.subject for edge in edges] == ["Document"]
+
+
+def test_every_class_in_a_module_is_represented() -> None:
+    source = "class A(Document):\n    pass\n\n\nclass B:\n    pass\n\n\nclass C(A, B):\n    pass\n"
+    records = _structural(source)
+
+    definitions = _by_category(records, EvidenceCategory.CLASS_DEFINITION)
+    assert {definition.subject for definition in definitions} == {"A", "B", "C"}
+
+
+def test_structural_records_carry_real_provenance() -> None:
+    records = _structural("class Plain:\n    pass\n")
+
+    source = records[0].source
+    assert source.repository is CanonicalRepository.FRAPPE
+    assert source.relative_path == "erpnext/controllers/accounts_controller.py"
+    assert source.line == 1
+
+
+def test_structural_evidence_ids_are_distinct_and_deterministic() -> None:
+    first = _structural("class Customer(Document, NestedSet):\n    pass\n")
+    second = _structural("class Customer(Document, NestedSet):\n    pass\n")
+
+    assert [record.evidence_id for record in first] == [record.evidence_id for record in second]
+    assert len({record.evidence_id for record in first}) == len(first)
+
+
+# -- Symbol compatibility: the join key between numerator and denominator -------------------------------
+
+
+def test_qualified_class_symbol_is_the_hook_symbol_without_its_final_segment() -> None:
+    # The join is string equality. If these two ever drift apart, nothing
+    # raises -- the population simply comes out wrong.
+    module = "erpnext.accounts.custom.address"
+    hook_symbol = _qualified_symbol(module, "ERPNextAddress", "validate")
+    class_symbol = _qualified_class_symbol(module, "ERPNextAddress")
+
+    assert hook_symbol.rsplit(".", 1)[0] == class_symbol
+    assert class_symbol == "erpnext.accounts.custom.address.ERPNextAddress"
+
+
+def test_every_hook_symbol_joins_a_class_definition_symbol_in_the_same_module() -> None:
+    # Asserted against both collectors run over one real-shaped module,
+    # rather than against the helpers in isolation.
+    source = (
+        "class ERPNextAddress(Address):\n"
+        "    def validate(self):\n"
+        "        pass\n\n\n"
+        "class Customer(Document):\n"
+        "    def on_submit(self):\n"
+        "        pass\n"
+    )
+    tree = ast.parse(source)
+    context = _context("erpnext/accounts/custom/address.py")
+
+    hooks = collect_controller_lifecycle_hook_evidence(tree, context)
+    structural = collect_class_definition_evidence(tree, context)
+
+    class_symbols = {
+        record.symbol for record in structural if record.category is EvidenceCategory.CLASS_DEFINITION
+    }
+    assert hooks
+    for hook in hooks:
+        assert hook.symbol.rsplit(".", 1)[0] in class_symbols
+
+
+def test_collector_coverage_parity_with_the_hook_collector() -> None:
+    # Every class the hook collector can attribute a method to must have a
+    # definition record. A definition collector that saw fewer classes
+    # would put symbols in the numerator that are missing from the
+    # denominator; one that saw more would inflate the denominator with
+    # classes the numerator can never mention. Both are silently wrong
+    # support figures rather than failures.
+    source = (
+        "class Top(Document):\n"
+        "    def validate(self):\n"
+        "        pass\n\n"
+        "    class Nested(Base):\n"
+        "        def on_submit(self):\n"
+        "            pass\n\n\n"
+        "def factory():\n"
+        "    class Local(Document):\n"
+        "        def on_trash(self):\n"
+        "            pass\n"
+        "    return Local\n"
+    )
+    tree = ast.parse(source)
+    context = _context("erpnext/controllers/accounts_controller.py")
+
+    hooks = collect_controller_lifecycle_hook_evidence(tree, context)
+    structural = collect_class_definition_evidence(tree, context)
+
+    hook_classes = {record.symbol.rsplit(".", 1)[0] for record in hooks}
+    definition_classes = {
+        record.symbol for record in structural if record.category is EvidenceCategory.CLASS_DEFINITION
+    }
+    assert hook_classes <= definition_classes
+    # And specifically: the deeply nested and function-local classes the
+    # hook collector reaches are reached here too.
+    assert len(hook_classes) == 3

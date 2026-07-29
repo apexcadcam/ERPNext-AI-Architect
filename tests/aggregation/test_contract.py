@@ -16,10 +16,13 @@ from aggregation.contract import (
     AggregationRequest,
     AggregationStatistics,
     AggregationStatus,
+    CorpusRef,
     ObservedBelowThreshold,
     Pattern,
     PatternSet,
     PopulationBasis,
+    ResolutionProvenance,
+    ResolutionStrategy,
     SkippedAggregation,
     ThresholdSpec,
 )
@@ -405,6 +408,205 @@ def test_aggregation_request_is_frozen() -> None:
 def test_aggregation_request_rejects_unknown_fields() -> None:
     with pytest.raises(ValidationError):
         _request(unexpected="field")
+
+
+# -- supporting_evidence_sets (Sprint 22, Inheritance Resolution §5) ------------------------------------
+
+
+def _frappe_evidence_set() -> EvidenceSet:
+    return _evidence_set().model_copy(
+        update={
+            "evidence_set_id": "evset-frappe",
+            "repository": CanonicalRepository.FRAPPE,
+            "version": "v15.103.1",
+        }
+    )
+
+
+def test_supporting_evidence_sets_defaults_to_empty() -> None:
+    # Single-corpus aggregation is unchanged: the field exists but is
+    # absent unless a caller supplies one.
+    assert _request().supporting_evidence_sets == ()
+
+
+def test_supporting_evidence_sets_accepts_a_different_repository() -> None:
+    request = _request(supporting_evidence_sets=(_frappe_evidence_set(),))
+    assert len(request.supporting_evidence_sets) == 1
+    assert request.supporting_evidence_sets[0].repository is CanonicalRepository.FRAPPE
+    # The subject is untouched by the presence of context.
+    assert request.evidence_set.repository is CanonicalRepository.ERPNEXT
+
+
+def test_supporting_evidence_sets_rejects_the_measured_repository() -> None:
+    # §5.3. Supplying a repository as its own resolution context reads as
+    # though it does something and silently does nothing.
+    with pytest.raises(ValidationError, match="subject"):
+        _request(supporting_evidence_sets=(_evidence_set(),))
+
+
+def test_supporting_evidence_sets_rejects_the_same_repository_twice() -> None:
+    # Typically two versions of it -- under which a class name could
+    # resolve against either, making descent ambiguous.
+    other_version = _frappe_evidence_set().model_copy(update={"version": "v15.99.0"})
+    with pytest.raises(ValidationError, match="ambiguous"):
+        _request(supporting_evidence_sets=(_frappe_evidence_set(), other_version))
+
+
+def test_supporting_evidence_sets_is_ordered_and_frozen() -> None:
+    request = _request(supporting_evidence_sets=(_frappe_evidence_set(),))
+    with pytest.raises(ValidationError):
+        request.supporting_evidence_sets = ()
+
+
+def test_aggregation_request_round_trips_with_supporting_sets() -> None:
+    request = _request(supporting_evidence_sets=(_frappe_evidence_set(),))
+    assert AggregationRequest.model_validate_json(request.model_dump_json()) == request
+
+
+# -- CorpusRef ------------------------------------------------------------------------------------------
+
+
+def _corpus_ref(**overrides: object) -> CorpusRef:
+    defaults: dict[str, object] = {
+        "repository": CanonicalRepository.ERPNEXT,
+        "version": "v15.102.0",
+        "commit": _COMMIT,
+    }
+    defaults.update(overrides)
+    return CorpusRef(**defaults)  # type: ignore[arg-type]
+
+
+def _frappe_ref() -> CorpusRef:
+    return _corpus_ref(
+        repository=CanonicalRepository.FRAPPE,
+        version="v15.103.1",
+        commit="61ab7e2b2409b293ffd3c8f72d730fa89b201332",
+    )
+
+
+def test_corpus_ref_round_trips_through_json() -> None:
+    ref = _corpus_ref()
+    assert CorpusRef.model_validate_json(ref.model_dump_json()) == ref
+
+
+def test_corpus_ref_requires_a_version_and_a_commit() -> None:
+    # Repository alone is not an identity: the same repository at two
+    # commits is two different bodies of evidence.
+    with pytest.raises(ValidationError):
+        _corpus_ref(version="")
+    with pytest.raises(ValidationError):
+        _corpus_ref(commit="")
+
+
+def test_corpus_ref_is_frozen_and_rejects_unknown_fields() -> None:
+    ref = _corpus_ref()
+    with pytest.raises(ValidationError):
+        ref.version = "v0"
+    with pytest.raises(ValidationError):
+        _corpus_ref(unexpected="field")
+
+
+# -- ResolutionStrategy / ResolutionProvenance ----------------------------------------------------------
+
+
+def test_resolution_strategy_defines_exactly_the_two_documented_values() -> None:
+    assert {member.value for member in ResolutionStrategy} == {"single_corpus", "multi_corpus"}
+
+
+def _provenance(**overrides: object) -> ResolutionProvenance:
+    defaults: dict[str, object] = {
+        "measured_corpus": _corpus_ref(),
+        "supporting_corpora": (_frappe_ref(),),
+        "strategy": ResolutionStrategy.MULTI_CORPUS,
+        "unresolved_bases_count": 0,
+    }
+    defaults.update(overrides)
+    return ResolutionProvenance(**defaults)  # type: ignore[arg-type]
+
+
+def test_resolution_provenance_round_trips_through_json() -> None:
+    provenance = _provenance()
+    assert ResolutionProvenance.model_validate_json(provenance.model_dump_json()) == provenance
+
+
+def test_single_corpus_strategy_requires_no_supporting_corpora() -> None:
+    provenance = _provenance(supporting_corpora=(), strategy=ResolutionStrategy.SINGLE_CORPUS)
+    assert provenance.supporting_corpora == ()
+
+
+def test_single_corpus_strategy_rejects_supporting_corpora() -> None:
+    # The label may not contradict the record -- `strategy` is exactly the
+    # field a reader checks when they do not want to read the rest.
+    with pytest.raises(ValidationError, match="multi_corpus"):
+        _provenance(strategy=ResolutionStrategy.SINGLE_CORPUS)
+
+
+def test_multi_corpus_strategy_rejects_an_empty_supporting_list() -> None:
+    with pytest.raises(ValidationError, match="single_corpus"):
+        _provenance(supporting_corpora=(), strategy=ResolutionStrategy.MULTI_CORPUS)
+
+
+def test_resolution_provenance_rejects_the_measured_repository_as_support() -> None:
+    with pytest.raises(ValidationError, match="measured repository"):
+        _provenance(supporting_corpora=(_corpus_ref(),))
+
+
+def test_resolution_provenance_records_the_unresolved_residue() -> None:
+    # A base naming nothing in any supplied corpus (`object`, `Exception`,
+    # a third-party class) is normal and expected; the count is recorded
+    # rather than swallowed.
+    assert _provenance(unresolved_bases_count=17).unresolved_bases_count == 17
+
+
+def test_resolution_provenance_rejects_a_negative_residue() -> None:
+    with pytest.raises(ValidationError):
+        _provenance(unresolved_bases_count=-1)
+
+
+def test_resolution_provenance_is_frozen_and_rejects_unknown_fields() -> None:
+    provenance = _provenance()
+    with pytest.raises(ValidationError):
+        provenance.strategy = ResolutionStrategy.SINGLE_CORPUS
+    with pytest.raises(ValidationError):
+        _provenance(unexpected="field")
+
+
+def test_resolution_provenance_carries_no_population_number() -> None:
+    # It records *how* a population was reached, not what it came to --
+    # the count itself already lives on Pattern.population, and storing
+    # it twice would create two sources of truth for one number.
+    fields = set(ResolutionProvenance.model_fields)
+    for forbidden in ("population", "population_size", "descendants", "occurrences"):
+        assert forbidden not in fields
+
+
+# -- PatternSet.resolution_provenance -------------------------------------------------------------------
+
+
+def test_pattern_set_resolution_provenance_defaults_to_none() -> None:
+    # `None` reads "no population in this artifact required inheritance
+    # resolution" -- true of every PatternSet produced up to v1.3.0.
+    assert _pattern_set().resolution_provenance is None
+
+
+def test_pattern_set_accepts_resolution_provenance() -> None:
+    pattern_set = _pattern_set(resolution_provenance=_provenance())
+    assert pattern_set.resolution_provenance is not None
+    assert pattern_set.resolution_provenance.strategy is ResolutionStrategy.MULTI_CORPUS
+
+
+def test_pattern_set_round_trips_with_resolution_provenance() -> None:
+    pattern_set = _pattern_set(resolution_provenance=_provenance())
+    assert PatternSet.model_validate_json(pattern_set.model_dump_json()) == pattern_set
+
+
+def test_a_v1_pattern_set_payload_still_validates() -> None:
+    # Backward expectation (Inheritance Resolution §7.2): a new reader
+    # given a 1.0-shaped artifact -- one with no resolution_provenance
+    # key at all -- still loads, because the field is optional.
+    payload = _pattern_set().model_dump(mode="json")
+    del payload["resolution_provenance"]
+    assert PatternSet.model_validate(payload).resolution_provenance is None
 
 
 # -- AggregationStatistics ---------------------------------------------------------------------------

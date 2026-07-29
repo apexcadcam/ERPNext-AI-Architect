@@ -38,10 +38,33 @@ class EvidenceKind(str, enum.Enum):
 
 
 class EvidenceCategory(str, enum.Enum):
-    """§3's two v1 signal types -- exactly two, deliberately."""
+    """§3's v1 signal types, plus Sprint 22's two structural ones.
+
+    **The two structural categories exist as a pair, and separating them
+    is the point** (Inheritance Resolution Specification §2.1). A single
+    category recording "class X declares base B" would emit nothing at
+    all for a class that declares no base -- which is precisely the blind
+    spot that made the `CONTROLLER_LIFECYCLE_HOOK` population underivable
+    in the first place, since that collector likewise emits a record only
+    where a hook is *found*. Recording the node set and the edge set
+    separately makes "every class produces at least one record" a
+    structural property rather than one someone has to remember.
+
+    `class Customer(Document, NestedSet)` therefore yields three records:
+    one `CLASS_DEFINITION` and two `CLASS_BASE_DECLARATION`. `class Foo:`
+    yields exactly one.
+
+    Neither category carries any inference. A `CLASS_BASE_DECLARATION`
+    records the base name *as written in the source*; whether that name
+    resolves to `frappe.model.document.Document`, and whether the
+    declaring class therefore descends from it, is computed downstream
+    from these records and never asserted here (ADR-0015).
+    """
 
     CONTROLLER_LIFECYCLE_HOOK = "controller_lifecycle_hook"
     WHITELISTED_API_DECORATION = "whitelisted_api_decoration"
+    CLASS_DEFINITION = "class_definition"
+    CLASS_BASE_DECLARATION = "class_base_declaration"
 
 
 class CollectorName(str, enum.Enum):
@@ -54,6 +77,12 @@ class CollectorName(str, enum.Enum):
 
     CONTROLLER_LIFECYCLE_HOOK_COLLECTOR = "controller_lifecycle_hook_collector"
     WHITELISTED_API_DECORATION_COLLECTOR = "whitelisted_api_decoration_collector"
+
+    #: One collector, two categories (Inheritance Resolution §2.4). A
+    #: single AST pass produces a class's definition record and its base
+    #: records together; splitting it in two would walk the same tree
+    #: twice to produce facts that are only meaningful as a pair.
+    CLASS_DEFINITION_COLLECTOR = "class_definition_collector"
 
 
 class Source(BaseModel):

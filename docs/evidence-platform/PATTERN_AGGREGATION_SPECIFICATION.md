@@ -21,11 +21,25 @@ The engine consumes **persisted Evidence only**. It never re-runs extraction, ne
 | Category | Status | Population |
 |---|---|---|
 | `whitelisted_api_decoration` | `aggregated` | Distinct symbols carrying a whitelist-family decorator (`frappe.whitelist` or `whitelist`) |
-| `controller_lifecycle_hook` | `skipped_no_population` | **Not derivable.** See §2.1 |
+| `controller_lifecycle_hook` | `aggregated` **(since Sprint 22)** | Distinct classes descending from `Document`, resolved transitively. See §2.1 |
+
+Two further categories — `class_definition` and `class_base_declaration` —
+exist in the Evidence contract and deliberately have **no row here**. They
+are topology, not signal: they describe the class graph so a population
+can be resolved. See [Inheritance Resolution §5.3](INHERITANCE_RESOLUTION_SPECIFICATION.md).
 
 Lookup is **default-deny**: a category with no matrix entry is skipped, never guessed at. `get_population_basis` returns `None` rather than raising.
 
-### 2.1 The lifecycle-hook denominator gap
+### 2.1 The lifecycle-hook denominator gap — **closed in Sprint 22**
+
+> **Resolved.** What follows is the gap as it stood from `v1.2.0` to
+> `v1.3.0`, kept because the reasoning is why the platform is trusted:
+> it declared what it could not measure rather than quoting a ratio it
+> could not support. [RQ-0002](../../research/RQ-0002-controller-lifecycle-hook-population.md)
+> measured the true population at **275** (frappe) and **510** (erpnext),
+> against the lower bound of 482 recorded below, and
+> [ADR-0015](../../adr/ADR-0015-cross-repository-inheritance-resolution.md)
+> settled how it is derived.
 
 The collector emits a record only when a hook is *found*, so classes without hooks leave no trace: **the numerator exists but the population does not.**
 
