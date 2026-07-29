@@ -32,7 +32,7 @@ This is not a speculative question. The platform has been declaring it, in writi
 ## Existing Repository Check
 
 - [`docs/evidence-platform/PATTERN_AGGREGATION_SPECIFICATION.md` §2.1](../docs/evidence-platform/PATTERN_AGGREGATION_SPECIFICATION.md) states the gap and gives a **lower bound** of 482 for ERPNext (448 direct plus "at least 34" via intermediate bases), explicitly noting that multi-level chains were unresolved at the time. This research supersedes that estimate with a measured figure.
-- [`aggregation/population.py`](../../aggregation/population.py) carries the same text as the executable `blocker` on the `POPULATION_BASES` entry.
+- [`aggregation/population.py`](../aggregation/population.py) carries the same text as the executable `blocker` on the `POPULATION_BASES` entry.
 - No Rule in `rules/` addresses controller inheritance.
 
 ## Method
