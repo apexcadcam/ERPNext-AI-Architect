@@ -1,13 +1,13 @@
 {
   "commit": "1d14ba16398db3a220873509565c60f2932bed81",
-  "correlation_id": "sprint20-validation",
+  "correlation_id": "9ae891ba-7e65-4df8-9ad4-a594aad63119",
   "errors": [],
-  "evidence_set_id": "b51913f2-2b3c-4c7d-9adf-acfe7ae2d4af",
-  "extracted_at": "2026-07-27T22:54:23.320682+00:00",
+  "evidence_set_id": "5098874e-767a-43b2-9273-a798360aa813",
+  "extracted_at": "2026-07-29T15:02:34.536709+00:00",
   "repository": "erpnext",
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "statistics": {
-    "evidence_extracted": 1245,
+    "evidence_extracted": 3260,
     "files_examined": 5938,
     "files_failed": 0,
     "files_skipped": 3522

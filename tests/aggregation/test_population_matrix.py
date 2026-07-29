@@ -27,11 +27,33 @@ def test_registry_covers_exactly_the_categories_the_matrix_lists() -> None:
     }
 
 
-def test_registry_covers_every_evidence_category_that_exists_today() -> None:
-    # Sprint 20 defines exactly two categories; both must appear in the
-    # matrix with an explicit verdict. A category existing in the Evidence
-    # contract but absent here would be an undeclared gap.
-    assert {basis.evidence_category for basis in POPULATION_BASES} == set(EvidenceCategory)
+#: Categories that are structural input to inheritance resolution rather
+#: than signals to be measured (Sprint 22). "What share of class
+#: definitions are class definitions" is not a question, so these have no
+#: row in the Capability Matrix -- their absence is a statement, not a
+#: gap, and the test below asserts it rather than tolerating it.
+_STRUCTURAL_CATEGORIES = frozenset(
+    {EvidenceCategory.CLASS_DEFINITION, EvidenceCategory.CLASS_BASE_DECLARATION}
+)
+
+
+def test_registry_covers_every_measurable_signal_category() -> None:
+    # Every category that *is* a signal must appear in the matrix with an
+    # explicit verdict. A signal category existing in the Evidence
+    # contract but absent here would be an undeclared gap -- which is the
+    # guard this test exists to provide, and which still holds.
+    signal_categories = set(EvidenceCategory) - _STRUCTURAL_CATEGORIES
+    assert {basis.evidence_category for basis in POPULATION_BASES} == signal_categories
+
+
+def test_the_structural_categories_are_deliberately_absent_from_the_matrix() -> None:
+    # Asserted explicitly so that adding a matrix row for one of them --
+    # which would mean the engine had begun trying to compute support over
+    # class definitions -- fails loudly instead of passing quietly.
+    matrix_categories = {basis.evidence_category for basis in POPULATION_BASES}
+    assert matrix_categories & _STRUCTURAL_CATEGORIES == set()
+    for category in _STRUCTURAL_CATEGORIES:
+        assert get_population_basis(category) is None
 
 
 def test_registry_has_no_duplicate_categories() -> None:
@@ -46,21 +68,24 @@ def test_whitelisted_api_decoration_is_aggregated_with_no_blocker() -> None:
     assert basis.blocker is None
 
 
-def test_controller_lifecycle_hook_is_skipped_with_a_stated_blocker() -> None:
+def test_controller_lifecycle_hook_is_now_aggregated_with_no_blocker() -> None:
+    # Sprint 22 closed the gap this row declared from v1.2.0 to v1.3.0.
+    # The blocker is *removed* rather than edited, because there is no
+    # longer anything blocking: the denominator is derivable.
     basis = get_population_basis(EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK)
     assert basis is not None
-    assert basis.status is AggregationStatus.SKIPPED_NO_POPULATION
-    assert basis.blocker is not None
-    assert basis.blocker.strip() != ""
+    assert basis.status is AggregationStatus.AGGREGATED
+    assert basis.blocker is None
 
 
-def test_the_lifecycle_hook_blocker_names_the_sprint_that_resolves_it() -> None:
-    # SS2.1: the blocker must say what would unblock it, not merely that
-    # something is missing -- it is the input Sprint 22 acts on.
+def test_the_lifecycle_hook_population_names_what_it_counts() -> None:
+    # A measured number must never be orphaned from its meaning: the
+    # description travels onto Pattern.population_description, so a reader
+    # of a support figure can see what the denominator was.
     basis = get_population_basis(EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK)
     assert basis is not None
-    assert basis.blocker is not None
-    assert "Sprint 22" in basis.blocker
+    assert "Document" in basis.description
+    assert "transitively" in basis.description
 
 
 # -- Structural invariants: hold for every future row, not just today's two --------------------------

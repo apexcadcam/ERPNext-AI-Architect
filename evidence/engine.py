@@ -37,6 +37,7 @@ from integration.errors import ConnectorLifecycleError
 
 from evidence.collectors import (
     _FileContext,
+    collect_class_definition_evidence,
     collect_controller_lifecycle_hook_evidence,
     collect_whitelisted_api_decoration_evidence,
 )
@@ -50,8 +51,17 @@ from evidence.contract import (
 from evidence.errors import EvidenceError_
 
 #: §6.10's fixed schema version for this Sprint's contract shape. Bumped
-#: only when `Evidence`'s own fields change.
-_SCHEMA_VERSION = "1.0"
+#: when `Evidence`'s own fields change -- or, as in Sprint 22, when the
+#: closed vocabularies it is validated against gain members.
+#:
+#: `2.0` because a `2.0` artifact can contain `class_definition` and
+#: `class_base_declaration` records, which a `1.0` reader has never seen.
+#: No field was added; `EvidenceCategory` and `CollectorName` grew, and
+#: both are closed enums, so an old reader rejects such a record loudly
+#: rather than skipping it. The version names what an artifact may
+#: contain, so it moves in the commit that first writes the new content --
+#: not earlier, when the label would have been untrue.
+_SCHEMA_VERSION = "2.0"
 
 
 # -- Step 1: Root Resolution --------------------------------------------------------------------------
@@ -157,7 +167,8 @@ def _collect_from_file(
 
     hook_evidence = collect_controller_lifecycle_hook_evidence(tree, context)
     decoration_evidence = collect_whitelisted_api_decoration_evidence(tree, context)
-    return hook_evidence + decoration_evidence, None
+    structural_evidence = collect_class_definition_evidence(tree, context)
+    return hook_evidence + decoration_evidence + structural_evidence, None
 
 
 # -- Step 5: Stable Sort ---------------------------------------------------------------------------

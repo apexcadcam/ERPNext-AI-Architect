@@ -264,7 +264,7 @@ def test_extract_evidence_end_to_end_against_a_real_tree(tmp_path: Path) -> None
 
     evidence_set = extract_evidence(request)
 
-    assert evidence_set.schema_version == "1.0"
+    assert evidence_set.schema_version == "2.0"
     assert evidence_set.repository == CanonicalRepository.FRAPPE
     assert evidence_set.truncated is False
     assert evidence_set.statistics.files_examined == 4
@@ -277,6 +277,10 @@ def test_extract_evidence_end_to_end_against_a_real_tree(tmp_path: Path) -> None
     assert categories == {
         EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK,
         EvidenceCategory.WHITELISTED_API_DECORATION,
+        # Sprint 22: the fixture's `class Customer:` declares no base, so
+        # it contributes a definition record and no edge record -- which
+        # is the invariant the two-category split exists to guarantee.
+        EvidenceCategory.CLASS_DEFINITION,
     }
     assert evidence_set.statistics.evidence_extracted == len(evidence_set.evidence)
 

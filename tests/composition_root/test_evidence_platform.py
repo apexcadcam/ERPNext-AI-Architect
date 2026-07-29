@@ -25,7 +25,7 @@ from composition_root.evidence_platform import (
     extract_repository_evidence,
     read_repository_patterns,
 )
-from evidence.contract import EvidenceSet
+from evidence.contract import EvidenceCategory, EvidenceSet
 from evidence.errors import EvidenceError_
 
 # -- A small, real Frappe-shaped tree ------------------------------------------------------------------
@@ -193,8 +193,18 @@ def test_aggregate_surfaces_the_declared_skip(source_root: Path, artifacts: dict
     _extract(source_root, artifacts)
     pattern_set = _aggregate(artifacts)
 
-    assert len(pattern_set.skipped_aggregations) == 1
-    assert pattern_set.skipped_aggregations[0].reason
+    # Asserted by category rather than by count: since Sprint 22 the
+    # corpus also carries structural class-definition Evidence, which
+    # has no population basis and therefore also skips. The invariant
+    # that matters is that the lifecycle-hook gap is reported with its
+    # reason intact, not how many skips happen to exist alongside it.
+    hook_skips = [
+        skipped
+        for skipped in pattern_set.skipped_aggregations
+        if skipped.evidence_category is EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK
+    ]
+    assert len(hook_skips) == 1
+    assert hook_skips[0].reason
 
 
 def test_aggregate_never_reaches_for_a_source_tree(source_root: Path, artifacts: dict[str, Path]) -> None:

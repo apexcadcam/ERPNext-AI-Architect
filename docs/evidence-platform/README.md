@@ -23,7 +23,7 @@ One-directional. Aggregation consumes the *persisted* `EvidenceSet` and is struc
 | [`EVIDENCE_EXTRACTION_SPECIFICATION.md`](EVIDENCE_EXTRACTION_SPECIFICATION.md) | What a fact is, how it is traced, and what is deliberately not collected |
 | [`PATTERN_AGGREGATION_SPECIFICATION.md`](PATTERN_AGGREGATION_SPECIFICATION.md) | What a measurement is, when a denominator exists, and what happens when it does not |
 | [`CLI_SPECIFICATION.md`](CLI_SPECIFICATION.md) | The `architect` command surface and the Output Contract |
-| [`INHERITANCE_RESOLUTION_SPECIFICATION.md`](INHERITANCE_RESOLUTION_SPECIFICATION.md) | **Sprint 22, proposed** — how the lifecycle-hook denominator becomes derivable |
+| [`INHERITANCE_RESOLUTION_SPECIFICATION.md`](INHERITANCE_RESOLUTION_SPECIFICATION.md) | **Sprint 22, implemented** — how the lifecycle-hook denominator became derivable |
 | [`BACKLOG.md`](BACKLOG.md) | Open work items, with what "done" means for each |
 
 Section numbers cited in the source (`§2`, `§7.3`, …) refer to these documents.
@@ -44,11 +44,21 @@ Every command emits the same six sections — `SUMMARY`, `ARTIFACTS WRITTEN`, `W
 
 **A skip is a result, not a message.** When the platform can see a signal but cannot honestly measure it, that fact becomes a typed, persisted `SkippedAggregation` carrying the full reason — asserted on by tests and printed in full by the CLI. The alternative, staying silent, would make "we cannot measure this" indistinguishable from "there is nothing here".
 
-The live example is the controller-lifecycle-hook denominator: 476 records exist in ERPNext, and the platform refuses to divide them by anything, because the collector only emits a record where a hook was *found* — so the numerator exists and the population does not. The full reasoning, including the measured lower bound of 482, is in Aggregation §2.1 and is printed verbatim every time the command runs.
+The clearest example ran for two releases. The controller-lifecycle-hook denominator was not derivable — the collector emits a record only where a hook was *found*, so classes without hooks left no trace and the numerator existed while the population did not. Rather than divide anyway, the platform recorded a `SkippedAggregation` naming the gap, the measured lower bound, and the work that would close it.
+
+Sprint 22 closed it: class-definition Evidence made the class graph visible, and an inheritance resolver turned it into a population. The declaration was not withdrawn — it was **earned out**. That is the intended lifecycle of every gap this platform declares.
 
 ## Current limits
 
 - Two repositories only (`frappe`, `erpnext`) — `CanonicalRepository` is a closed enum.
-- One category has a derivable denominator (`whitelisted_api_decoration`); the other is skipped, by design, with its reason recorded.
+- Both behavioural categories now have a derivable denominator. The
+  lifecycle-hook population was the platform's one declared gap from
+  `v1.2.0`; Sprint 22 closed it by adding class-definition Evidence and an
+  inheritance resolver, so the `SKIPPED` section is now empty **because the
+  measurement exists**, not because the declaration was withdrawn.
+- Resolving ERPNext's population correctly requires supplying `frappe` as
+  context: 18 of its controllers reach `Document` only through a
+  frappe-defined base. Aggregating ERPNext alone yields 492 against a true
+  510, so the `PatternSet` records which corpora contributed.
 - Cross-repository comparison is deliberately undefined and has no command surface.
 - Re-extraction reproduces every `evidence_id` and every non-timestamp field identically, but the Evidence JSONL is not byte-identical because each record carries a `collected_at` timestamp. Pattern artifacts *are* byte-identical.

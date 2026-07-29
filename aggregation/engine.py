@@ -29,18 +29,28 @@ from aggregation.contract import (
     AggregationRequest,
     AggregationStatistics,
     AggregationStatus,
+    CorpusRef,
     ObservedBelowThreshold,
     Pattern,
     PatternSet,
+    ResolutionProvenance,
+    ResolutionStrategy,
     SkippedAggregation,
     ThresholdSpec,
 )
-from aggregation.population import get_population_basis
-from aggregation.resolvers import POPULATION_RESOLVERS
+from aggregation.inheritance import ClassDescentResult, resolve_descent
+from aggregation.population import STRUCTURAL_CATEGORIES, get_population_basis
+from aggregation.resolvers import CONTROLLER_POPULATION_ROOT, POPULATION_RESOLVERS, PopulationContext
 
 #: §7.7's fixed schema version for this Sprint's contract shape. Bumped
 #: only when `Pattern`'s or `PatternSet`'s own fields change.
-_SCHEMA_VERSION = "1.0"
+#:
+#: `2.0` from Sprint 22: `PatternSet` gained `resolution_provenance`, so
+#: the persisted metadata sidecar gains a key. An old reader given a `2.0`
+#: artifact rejects it loudly -- `PatternSet` is `extra="forbid"` -- which
+#: is the correct outcome, since silently ignoring the field would mean
+#: reading a population without the record of how it was reached.
+_SCHEMA_VERSION = "2.0"
 
 #: §7.6's minimum-occurrence threshold, registered rather than inlined --
 #: the same Rule Metadata Registry discipline
@@ -63,10 +73,21 @@ def _partition_by_category(evidence: tuple[Evidence, ...]) -> dict[EvidenceCateg
     """§10 step 1. Groups records by their own category, preserving each
     category's internal record order (the engine's own sort is applied
     later, centrally, to the assembled patterns).
+
+    **Structural categories are excluded here rather than skipped later.**
+    `CLASS_DEFINITION` and `CLASS_BASE_DECLARATION` are topology: they
+    describe the class graph so a population can be resolved, and are not
+    observations anyone measures a share of. Letting them reach the
+    matrix's default-deny would file them as `SKIPPED_NO_POPULATION` --
+    "we could not measure this" -- which is the wrong claim. Nobody
+    tried, because there is nothing there to measure, and a declared gap
+    that is not a gap devalues the ones that are.
     """
 
     partitioned: dict[EvidenceCategory, list[Evidence]] = defaultdict(list)
     for record in evidence:
+        if record.category in STRUCTURAL_CATEGORIES:
+            continue
         partitioned[record.category].append(record)
     return dict(partitioned)
 
@@ -97,6 +118,7 @@ def _aggregate_category(
     records: list[Evidence],
     evidence_set: EvidenceSet,
     min_occurrences: int,
+    context: PopulationContext,
 ) -> tuple[list[Pattern], list[ObservedBelowThreshold], SkippedAggregation | None]:
     """§10 steps 2-5 for one category.
 
@@ -123,7 +145,7 @@ def _aggregate_category(
         # inventing a denominator.
         return [], [], _skip(category, "no population resolver is registered for this category", len(records))
 
-    population, population_description = resolver(records)
+    population, population_description = resolver(records, context)
     if population == 0:
         # Never divide by zero, and never publish a ratio against an
         # empty population.
@@ -169,6 +191,48 @@ def _aggregate_category(
     return patterns, below_threshold, None
 
 
+#: Categories whose population is derived from the resolved class graph
+#: rather than from their own records. Only these make
+#: `ResolutionProvenance` meaningful.
+_DESCENT_DERIVED_CATEGORIES = frozenset({EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK})
+
+
+def _corpus_ref(evidence_set: EvidenceSet) -> CorpusRef:
+    return CorpusRef(
+        repository=evidence_set.repository,
+        version=evidence_set.version,
+        commit=evidence_set.commit,
+    )
+
+
+def _resolution_provenance(
+    request: AggregationRequest,
+    descent: ClassDescentResult,
+    aggregated_categories: set[EvidenceCategory],
+) -> ResolutionProvenance | None:
+    """Inheritance Resolution §6. Records how a population was reached --
+    but only when a population actually was reached that way.
+
+    Returns `None` when no aggregated category derived its denominator
+    from the class graph, which is the documented meaning of the absent
+    field rather than a placeholder: 510 and 492 are both defensible
+    ERPNext populations differing only by what was supplied, so an
+    artifact that quotes one without recording its inputs cannot be
+    reproduced. An artifact that quotes neither has nothing to record.
+    """
+
+    if not aggregated_categories & _DESCENT_DERIVED_CATEGORIES:
+        return None
+
+    supporting = request.supporting_evidence_sets
+    return ResolutionProvenance(
+        measured_corpus=_corpus_ref(request.evidence_set),
+        supporting_corpora=tuple(_corpus_ref(corpus) for corpus in supporting),
+        strategy=(ResolutionStrategy.MULTI_CORPUS if supporting else ResolutionStrategy.SINGLE_CORPUS),
+        unresolved_bases_count=len(descent.unresolved_bases),
+    )
+
+
 def _pattern_sort_key(pattern: Pattern) -> tuple[str, int, str]:
     """§11's mandatory ordering: category, then most frequent first, ties
     broken alphabetically -- never dict insertion order.
@@ -193,17 +257,31 @@ def aggregate_patterns(request: AggregationRequest) -> PatternSet:
     evidence_set = request.evidence_set
     partitioned = _partition_by_category(evidence_set.evidence)
 
+    # Resolved once, before the category loop, and shared by every
+    # resolver that needs it. Doing it per-category would rebuild the same
+    # graph repeatedly and -- worse -- let the population quoted in a
+    # `Pattern` and the residue quoted in `ResolutionProvenance` come from
+    # two separate computations that could disagree.
+    descent = resolve_descent(evidence_set, request.supporting_evidence_sets, root=CONTROLLER_POPULATION_ROOT)
+    context = PopulationContext(
+        measured=evidence_set,
+        supporting=request.supporting_evidence_sets,
+        descent=descent,
+    )
+
     patterns: list[Pattern] = []
     below_threshold: list[ObservedBelowThreshold] = []
     skipped: list[SkippedAggregation] = []
+    aggregated_categories: set[EvidenceCategory] = set()
 
     for category in sorted(partitioned, key=lambda item: item.value):
         category_patterns, category_below, category_skip = _aggregate_category(
-            category, partitioned[category], evidence_set, request.min_occurrences
+            category, partitioned[category], evidence_set, request.min_occurrences, context
         )
         if category_skip is not None:
             skipped.append(category_skip)
             continue
+        aggregated_categories.add(category)
         patterns.extend(category_patterns)
         below_threshold.extend(category_below)
 
@@ -222,6 +300,7 @@ def aggregate_patterns(request: AggregationRequest) -> PatternSet:
 
     return PatternSet(
         pattern_set_id=str(uuid.uuid4()),
+        resolution_provenance=_resolution_provenance(request, descent, aggregated_categories),
         schema_version=_SCHEMA_VERSION,
         source_evidence_set_id=evidence_set.evidence_set_id,
         repository=evidence_set.repository,

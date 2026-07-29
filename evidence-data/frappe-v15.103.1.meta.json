@@ -1,13 +1,13 @@
 {
   "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
-  "correlation_id": "sprint20-validation",
+  "correlation_id": "42409e33-aab8-44cf-95ba-244f4b1e9e89",
   "errors": [],
-  "evidence_set_id": "6aafff47-1c7d-44d9-9e88-3b4a20f1ddce",
-  "extracted_at": "2026-07-27T22:53:56.706587+00:00",
+  "evidence_set_id": "bbfa2b12-f8a9-414d-94fd-eb521f820504",
+  "extracted_at": "2026-07-29T15:02:26.937626+00:00",
   "repository": "frappe",
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "statistics": {
-    "evidence_extracted": 812,
+    "evidence_extracted": 2595,
     "files_examined": 46296,
     "files_failed": 0,
     "files_skipped": 44912

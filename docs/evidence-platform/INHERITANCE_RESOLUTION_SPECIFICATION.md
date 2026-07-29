@@ -2,7 +2,7 @@
 
 **Sprint:** 22
 **Version:** 1.0
-**Status:** Proposed — pending review. **Nothing in this document is implemented.**
+**Status:** Implemented. Sections marked *(final)* record decisions settled during implementation.
 **Decides:** how the `controller_lifecycle_hook` population becomes derivable
 **Governed by:** [ADR-0015](../../adr/ADR-0015-cross-repository-inheritance-resolution.md) · **Evidence from:** [RQ-0002](../../research/RQ-0002-controller-lifecycle-hook-population.md)
 
@@ -234,7 +234,30 @@ It never contributes:
 
 §8 makes this a test, not a promise.
 
-### 5.3 Validation
+### 5.3 Category accounting *(final)*
+
+Settled in Commit 5, and now enforced by a validator on
+`AggregationStatistics` rather than left to be noticed:
+
+| Statistic | Counts |
+|---|---|
+| `categories_present` | Evidence categories treated as candidates for measurement — every category in the `EvidenceSet` **except the structural ones** |
+| `categories_aggregated` | Of those, the ones that produced a measurement |
+| `categories_skipped` | Of those, the ones that could not |
+| `evidence_records_consumed` | **Every** record read, structural included |
+
+`aggregated + skipped == present` always holds. Structural categories sit
+outside the accounting entirely — neither present, nor aggregated, nor
+skipped. Counting them as present while excluding them from the other two
+would break the invariant; counting them as skipped would assert "we
+could not measure this" when nobody tried, because there is nothing there
+to measure. **A declared gap that is not a gap devalues the ones that
+are.**
+
+`evidence_records_consumed` is deliberately not narrowed the same way:
+those records were read, and the populations depend on them.
+
+### 5.4 Validation
 
 - A supporting corpus whose `repository` equals the subject's is rejected. Supplying `erpnext` as its own context is a caller error, not a no-op.
 - Duplicate supporting corpora are rejected.
@@ -253,7 +276,7 @@ class ResolutionProvenance(BaseModel):       # frozen, extra="forbid"
     measured_corpus: CorpusRef               # repository, version, commit
     supporting_corpora: tuple[CorpusRef, ...]
     strategy: ResolutionStrategy             # closed enum
-    unresolved_base_count: int
+    unresolved_bases_count: int
 ```
 
 `ResolutionStrategy` is closed, with exactly two members for now:
@@ -264,6 +287,31 @@ class ResolutionProvenance(BaseModel):       # frozen, extra="forbid"
 | `multi_corpus` | Descent resolved across the measured corpus plus supporting corpora |
 
 Carried on `PatternSet` and persisted in the metadata sidecar. A reader can then tell a 492 from a 510 without re-running anything.
+
+### 6.3 `unresolved_bases_count` is measured-repository scoped *(final)*
+
+Settled in Commit 5. The residue counts base names **declared by the
+measured corpus** that match no class definition in any supplied corpus.
+
+Resolution still consults every corpus — a name counts as unresolved only
+when nothing anywhere defines it — but **attribution is narrowed to the
+measured repository**, for the same reason `descendants` is (§5.2).
+`frappe`'s own external bases (`ABC`, `Enum`, `Criterion`) are not
+ERPNext's residue.
+
+Without this, the diagnostic grew as more context was supplied: ERPNext
+reported 11 alone and 40 with `frappe`, of which 29 were frappe's. It now
+reports 4 with `frappe` supplied — its own residue, after the supporting
+corpus resolved names that were previously unmatched. **Supplying context
+can only ever shrink the residue, never grow it**, which is the property a
+reader would assume and is now asserted by test.
+
+### 6.4 When provenance is absent *(final)*
+
+`None` means "no population in this artifact was derived from the class
+graph" — a statement, not a missing value. It is set only when a
+descent-derived category was actually aggregated, so a whitelist-only
+artifact carries no provenance because none was needed.
 
 ## 7. Schema Version
 
@@ -323,8 +371,9 @@ Asserted against the committed `v1.3.0` corpus:
 
 | Quantity | Before | After |
 |---|---|---|
-| `categories_present` | 2 | 3 |
-| `categories_aggregated` | 1 | 2 |
+| Measured lifecycle-hook Patterns | 0 | 7 (frappe), 11 (erpnext) |
+| `categories_present` | 2 | **2** |
+| `categories_aggregated` | 1 | **2** |
 | `categories_skipped` | 1 | **0** |
 | `SkippedAggregation` entries | 1 | **0** |
 | `erpnext` lifecycle-hook population | — | **510**, with `frappe` supplied |

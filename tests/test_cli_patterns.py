@@ -148,8 +148,14 @@ def test_every_skipped_aggregation_is_reported(evidence_dir: Path, pattern_dir: 
     result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
     skipped = json_module.loads(result.stdout)["skipped"]
 
+    # The CLI's invariant is that it reports every skip the artifact
+    # holds -- not that the artifact holds a particular number of them.
+    # Asserting a literal count here made this a test of the corpus
+    # rather than of the command, and it broke the moment Sprint 22 added
+    # structural Evidence that also has no population basis.
     meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
-    assert len(skipped) == len(meta["skipped_aggregations"]) == 1
+    assert len(skipped) == len(meta["skipped_aggregations"])
+    assert skipped, "the lifecycle-hook gap must always be among them"
 
 
 def test_the_skip_reason_is_printed_in_full_and_unedited(evidence_dir: Path, pattern_dir: Path) -> None:

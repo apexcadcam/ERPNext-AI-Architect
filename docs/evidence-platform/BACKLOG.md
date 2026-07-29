@@ -10,7 +10,7 @@ Ordered by dependency, not by size: **W5 unblocks the platform's central limitat
 | [W2](#w2--repository-wide-formatting-normalization) | Repository-wide formatting normalization | Debt, optional | No |
 | [W3](#w3--hrms-support) | HRMS support | Contract change | No — needs a decision first |
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
-| [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | **Yes** — blocks category 2 |
+| [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | ✅ **Done** — closed by Sprint 22 |
 
 The release validation report numbered three of these as findings; the mapping, so the two vocabularies do not drift apart: **F1 → W4** (timestamps), **F2 → W1** (typing), **F3 → W2** (formatting). `W` identifiers are the ones to use from here.
 
@@ -109,7 +109,15 @@ Option 1 looks strongest, but it changes the Evidence schema and would require r
 
 ## W5 — Sprint 22: denominator work
 
-**Kind:** Feature · **Priority:** highest · **Blocks:** the second Evidence category
+**Kind:** Feature · **Status: ✅ closed by Sprint 22** · originally: highest priority, blocking the second Evidence category
+
+**Outcome.** The population is measured: **275** (frappe) and **510**
+(erpnext, with frappe supplied as resolution context). `validate` is
+implemented by 31.6% of frappe controllers and 35.3% of ERPNext
+controllers. `categories_skipped` is `0`; the `SKIPPED` section is empty
+because the denominator now exists, not because a row was removed.
+
+What follows is the item as originally written.
 
 The platform's central declared limitation. **237 Evidence records in `frappe` and 476 in `erpnext` are collected but cannot be aggregated**, because the population is not derivable from Evidence alone: the collector emits a record only where a hook is *found*, so classes without hooks leave no trace. The numerator exists; the denominator does not.
 

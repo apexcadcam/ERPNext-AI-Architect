@@ -30,6 +30,25 @@ from evidence.contract import EvidenceCategory
 
 from aggregation.contract import AggregationStatus, PopulationBasis
 
+#: Evidence categories that are **topology, not signal**.
+#:
+#: `CLASS_DEFINITION` and `CLASS_BASE_DECLARATION` describe the shape of
+#: the class graph. They exist so that a population can be *resolved*
+#: (Inheritance Resolution §2); they are not observations anyone measures
+#: a share of. "What fraction of class definitions are class definitions"
+#: is not a question, so these categories have no row in the Capability
+#: Matrix -- and, unlike a category whose denominator is merely missing,
+#: their absence is a statement rather than a gap.
+#:
+#: The engine therefore excludes them from aggregation entirely: they are
+#: neither measured nor reported as skipped. Letting them fall through to
+#: the matrix's default-deny would file them as "we could not measure
+#: this", which is the wrong claim -- nobody tried, because there is
+#: nothing there to measure.
+STRUCTURAL_CATEGORIES: frozenset[EvidenceCategory] = frozenset(
+    {EvidenceCategory.CLASS_DEFINITION, EvidenceCategory.CLASS_BASE_DECLARATION}
+)
+
 #: §2's Aggregation Capability Matrix, verbatim.
 #:
 #: Ordered by `EvidenceCategory` declaration order for stable iteration.
@@ -38,22 +57,11 @@ from aggregation.contract import AggregationStatus, PopulationBasis
 POPULATION_BASES: tuple[PopulationBasis, ...] = (
     PopulationBasis(
         evidence_category=EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK,
-        status=AggregationStatus.SKIPPED_NO_POPULATION,
+        status=AggregationStatus.AGGREGATED,
         description=(
-            "Distinct classes that are frappe.model.document.Document subclasses -- "
-            "the set a lifecycle hook could possibly appear on."
-        ),
-        blocker=(
-            "Not derivable from persisted Evidence alone. The collector emits a record only "
-            "when a hook is found, so classes without hooks leave no trace: the numerator "
-            "exists but the population does not. Measured against real ERPNext v15.102.0, the "
-            "true population is at least 482 (448 direct 'class X(Document)' plus at least 34 "
-            "via intermediate bases such as AccountsController, TransactionBase, "
-            "StockController, BuyingController and SellingController), and multi-level "
-            "inheritance chains remain unresolved even by that count. Aggregating anyway would "
-            "yield a share of hook *records* wearing the label of a share of controllers. "
-            "Requires a new Evidence category recording class definitions and their base "
-            "classes (Sprint 22)."
+            "Distinct classes descending from frappe.model.document.Document, resolved "
+            "transitively across the measured corpus and any supporting corpora -- the set a "
+            "lifecycle hook could possibly appear on."
         ),
     ),
     PopulationBasis(

@@ -83,6 +83,7 @@ _REPOSITORY_INTELLIGENCE_DIRS = {
 _ALLOWED_TOP_LEVEL_IMPORTS = {
     "__future__",
     "collections",
+    "dataclasses",  # resolvers.PopulationContext, mirroring evidence.collectors._FileContext
     "datetime",
     "enum",
     "hashlib",
@@ -359,6 +360,7 @@ def test_every_aggregation_file_was_actually_scanned() -> None:
         AGGREGATION_DIR / "contract.py",
         AGGREGATION_DIR / "population.py",
         AGGREGATION_DIR / "resolvers.py",
+        AGGREGATION_DIR / "inheritance.py",
         AGGREGATION_DIR / "engine.py",
         AGGREGATION_DIR / "persistence.py",
         AGGREGATION_DIR / "module.py",

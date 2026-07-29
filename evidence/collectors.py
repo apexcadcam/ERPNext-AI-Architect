@@ -89,6 +89,25 @@ def _qualified_symbol(module_name: str, class_name: str | None, function_name: s
     return f"{module_name}.{class_name}.{function_name}"
 
 
+def _qualified_class_symbol(module_name: str, class_name: str) -> str:
+    """The class-level `symbol`, and **a join key rather than a display
+    string** (Inheritance Resolution §2.3).
+
+    `_qualified_symbol` builds `<module>.<Class>.<function>` for a method.
+    Dropping that final segment must yield exactly what this function
+    returns for the same class, because the lifecycle-hook numerator is
+    joined to the class-definition denominator by string equality on this
+    value. Any drift between the two -- a nesting path here that the hook
+    collector does not use, a different separator -- would not raise; it
+    would silently produce a population that looks plausible and is wrong.
+
+    `tests/evidence/test_collectors.py` asserts the two agree rather than
+    trusting this docstring.
+    """
+
+    return f"{module_name}.{class_name}"
+
+
 def _compute_evidence_id(
     repository: CanonicalRepository,
     relative_path: str,
@@ -258,6 +277,81 @@ def collect_whitelisted_api_decoration_evidence(
                     subject=decorator_name,
                     line=node.lineno,
                     collector=CollectorName.WHITELISTED_API_DECORATION_COLLECTOR,
+                )
+            )
+
+    return tuple(evidence)
+
+
+# -- Collector 3: Class Definitions and Inheritance Edges -----------------------------------------------
+
+
+def collect_class_definition_evidence(tree: ast.Module, context: _FileContext) -> tuple[Evidence, ...]:
+    """Sprint 22's structural collector (Inheritance Resolution §3).
+
+    Emits **one `CLASS_DEFINITION` record for every class, without
+    exception**, plus one `CLASS_BASE_DECLARATION` record per declared
+    base. `class Customer(Document, NestedSet)` yields three records;
+    `class Foo:` yields exactly one.
+
+    That the definition record is emitted unconditionally -- before any
+    base is looked at -- is the whole point. The two existing collectors
+    emit only where something is *found*, which is exactly why the
+    lifecycle-hook population was not derivable: a class with no hook
+    left no trace, so the numerator existed and the denominator did not.
+    A class with no bases must still be in the corpus, or this collector
+    would reproduce that blind spot inside the fix for it.
+
+    **This collector resolves nothing.** It does not decide whether a
+    class descends from `Document`, does not follow imports, does not
+    normalise `Document` and `frappe.model.document.Document` into one
+    another, and does not distinguish a controller from an exception
+    class or a mixin. Reading `class SalesInvoice(SellingController)` it
+    genuinely does not know, and a collector that guesses is one that can
+    be wrong in a way nothing downstream can detect (ADR-0015). Descent
+    is computed later, from these records, where it can be recomputed
+    under a better rule without re-extracting the corpus.
+
+    Its reach is `ast.walk` over every `ClassDef` at any nesting depth --
+    identical to `collect_controller_lifecycle_hook_evidence`, and
+    identical deliberately. A definition collector that saw fewer classes
+    than the hook collector would put classes in the numerator that are
+    absent from the denominator; one that saw more would inflate the
+    denominator with classes the numerator can never mention. Either
+    direction is a silently wrong support figure rather than a failure.
+    """
+
+    module_name = _module_dotted_name(context.relative_path)
+    evidence: list[Evidence] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+
+        symbol = _qualified_class_symbol(module_name, node.name)
+        evidence.append(
+            _build_evidence(
+                context=context,
+                category=EvidenceCategory.CLASS_DEFINITION,
+                symbol=symbol,
+                subject=node.name,
+                line=node.lineno,
+                collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
+            )
+        )
+
+        # `node.bases` holds positional bases only -- `metaclass=` and
+        # other keywords live in `node.keywords` and are not bases, so
+        # they are not edges and are not recorded here.
+        for base in node.bases:
+            evidence.append(
+                _build_evidence(
+                    context=context,
+                    category=EvidenceCategory.CLASS_BASE_DECLARATION,
+                    symbol=symbol,
+                    subject=ast.unparse(base),
+                    line=base.lineno,
+                    collector=CollectorName.CLASS_DEFINITION_COLLECTOR,
                 )
             )
 

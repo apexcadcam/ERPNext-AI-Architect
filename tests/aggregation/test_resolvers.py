@@ -10,14 +10,19 @@ from evidence.contract import (
     Evidence,
     EvidenceCategory,
     EvidenceKind,
+    EvidenceSet,
+    EvidenceStatistics,
     Source,
 )
 
 from aggregation.contract import AggregationStatus
+from aggregation.inheritance import ClassDescentResult
 from aggregation.population import POPULATION_BASES
 from aggregation.resolvers import (
     POPULATION_RESOLVERS,
     WHITELIST_FAMILY_SUBJECTS,
+    PopulationContext,
+    resolve_controller_lifecycle_hook_population,
     resolve_whitelisted_api_population,
 )
 
@@ -50,6 +55,38 @@ def _evidence(
     )
 
 
+def _empty_evidence_set() -> EvidenceSet:
+    return EvidenceSet(
+        evidence_set_id="evset-1",
+        schema_version="1.0",
+        repository=CanonicalRepository.ERPNEXT,
+        version="v15.102.0",
+        commit=_COMMIT,
+        extracted_at="2026-07-27T12:00:00+00:00",
+        correlation_id="corr-1",
+        evidence=(),
+        errors=(),
+        truncated=False,
+        statistics=EvidenceStatistics(
+            files_examined=0, files_skipped=0, files_failed=0, evidence_extracted=0
+        ),
+    )
+
+
+def _context(descent: ClassDescentResult | None = None) -> PopulationContext:
+    """The shared context every resolver now receives.
+
+    The whitelist resolver ignores it entirely -- which is the point of
+    passing it: a resolver takes what it needs and no more.
+    """
+
+    return PopulationContext(
+        measured=_empty_evidence_set(),
+        supporting=(),
+        descent=descent if descent is not None else ClassDescentResult(),
+    )
+
+
 # -- The rule this module exists to enforce: distinct symbols, never records -------------------------
 
 
@@ -64,7 +101,7 @@ def test_counts_distinct_symbols_not_records() -> None:
         _evidence(symbol="erpnext.api.get_data", subject="rate_limit"),
     ]
 
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
 
     assert population == 1
 
@@ -76,7 +113,7 @@ def test_counts_each_distinct_symbol_once() -> None:
         _evidence(symbol="erpnext.api.get_third", subject="frappe.whitelist"),
     ]
 
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
 
     assert population == 3
 
@@ -89,7 +126,7 @@ def test_the_same_symbol_across_different_files_is_still_counted_once() -> None:
         _evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist", relative_path="b.py", line=2),
     ]
 
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
 
     assert population == 1
 
@@ -99,7 +136,7 @@ def test_the_same_symbol_across_different_files_is_still_counted_once() -> None:
 
 def test_the_attribute_form_frappe_whitelist_counts() -> None:
     records = [_evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist")]
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
     assert population == 1
 
 
@@ -107,7 +144,7 @@ def test_the_bare_form_whitelist_counts() -> None:
     # Real, observed in frappe v15.103.1 -- e.g. `frappe/__init__.py`'s own
     # `rename_doc`, decorated with a directly-imported `@whitelist(...)`.
     records = [_evidence(symbol="frappe.rename_doc", subject="whitelist")]
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
     assert population == 1
 
 
@@ -116,7 +153,7 @@ def test_both_forms_together_are_counted_as_distinct_symbols() -> None:
         _evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist"),
         _evidence(symbol="frappe.rename_doc", subject="whitelist"),
     ]
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
     assert population == 2
 
 
@@ -133,7 +170,7 @@ def test_a_symbol_with_only_non_whitelist_subjects_is_not_in_the_population() ->
         _evidence(symbol="erpnext.helpers.cached", subject="redis_cache"),
     ]
 
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
 
     assert population == 0
 
@@ -145,7 +182,7 @@ def test_non_whitelist_subjects_are_ignored_while_whitelist_ones_are_counted() -
         _evidence(symbol="erpnext.helpers.other", subject="staticmethod"),
     ]
 
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
 
     assert population == 1
 
@@ -159,7 +196,7 @@ def test_a_subject_that_merely_contains_whitelist_does_not_count() -> None:
         _evidence(symbol="erpnext.api.c", subject="frappe.whitelist_v2"),
     ]
 
-    population, _ = resolve_whitelisted_api_population(records)
+    population, _ = resolve_whitelisted_api_population(records, _context())
 
     assert population == 0
 
@@ -170,7 +207,7 @@ def test_a_subject_that_merely_contains_whitelist_does_not_count() -> None:
 def test_empty_input_yields_a_zero_population_without_raising() -> None:
     # SS10: no ordinary-data path raises. A zero population is a legitimate
     # observation the engine turns into a recorded SkippedAggregation.
-    population, description = resolve_whitelisted_api_population([])
+    population, description = resolve_whitelisted_api_population([], _context())
 
     assert population == 0
     assert description.strip() != ""
@@ -183,13 +220,13 @@ def test_the_returned_description_is_non_empty() -> None:
     # It becomes Pattern.population_description; an empty one would orphan
     # a measured number from what it counted.
     _, description = resolve_whitelisted_api_population(
-        [_evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist")]
+        [_evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist")], _context()
     )
     assert description.strip() != ""
 
 
 def test_the_description_states_what_was_counted() -> None:
-    _, description = resolve_whitelisted_api_population([])
+    _, description = resolve_whitelisted_api_population([], _context())
     assert "distinct symbols" in description
     assert "whitelist" in description
 
@@ -197,9 +234,9 @@ def test_the_description_states_what_was_counted() -> None:
 def test_the_description_is_stable_regardless_of_input() -> None:
     # Determinism (SS11): the description describes the population's
     # definition, not the particular records seen.
-    _, empty_description = resolve_whitelisted_api_population([])
+    _, empty_description = resolve_whitelisted_api_population([], _context())
     _, populated_description = resolve_whitelisted_api_population(
-        [_evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist")]
+        [_evidence(symbol="erpnext.api.get_data", subject="frappe.whitelist")], _context()
     )
     assert empty_description == populated_description
 
@@ -213,7 +250,9 @@ def test_resolution_is_deterministic_across_repeated_calls() -> None:
         _evidence(symbol="erpnext.api.get_other", subject="frappe.whitelist"),
     ]
 
-    assert resolve_whitelisted_api_population(records) == resolve_whitelisted_api_population(records)
+    assert resolve_whitelisted_api_population(records, _context()) == resolve_whitelisted_api_population(
+        records, _context()
+    )
 
 
 def test_resolution_does_not_depend_on_record_order() -> None:
@@ -223,8 +262,8 @@ def test_resolution_does_not_depend_on_record_order() -> None:
         _evidence(symbol="erpnext.api.get_other", subject="frappe.whitelist"),
     ]
 
-    assert resolve_whitelisted_api_population(records) == resolve_whitelisted_api_population(
-        list(reversed(records))
+    assert resolve_whitelisted_api_population(records, _context()) == (
+        resolve_whitelisted_api_population(list(reversed(records)), _context())
     )
 
 
@@ -270,3 +309,55 @@ def test_the_whitelisted_api_resolver_is_the_registered_one() -> None:
 
 def test_every_registered_resolver_is_callable() -> None:
     assert all(callable(resolver) for resolver in POPULATION_RESOLVERS.values())
+
+
+# -- The controller lifecycle hook population (Sprint 22) -----------------------------------------------
+
+
+def test_the_controller_population_is_the_resolved_descendant_count() -> None:
+    descent = ClassDescentResult(descendants=("a.A", "b.B", "c.C"), max_depth=2)
+    population, _ = resolve_controller_lifecycle_hook_population([], _context(descent))
+
+    assert population == 3
+
+
+def test_the_controller_population_ignores_the_hook_records_entirely() -> None:
+    # The decisive property. Hook records are the *numerator*: they exist
+    # only where a hook was found, so counting them would count classes
+    # that have a hook rather than classes that could. Passing a hundred
+    # of them must not move a denominator of three.
+    descent = ClassDescentResult(descendants=("a.A", "b.B", "c.C"))
+    hooks = [
+        _evidence(
+            symbol=f"erpnext.mod.C{index}.validate",
+            subject="validate",
+            category=EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK,
+        )
+        for index in range(100)
+    ]
+    population, _ = resolve_controller_lifecycle_hook_population(hooks, _context(descent))
+
+    assert population == 3
+
+
+def test_an_unresolved_class_graph_yields_a_zero_population_without_raising() -> None:
+    # A zero population is a legitimate observation the engine turns into
+    # a recorded skip; Pattern.population's ge=1 makes it impossible for
+    # that zero to reach a published measurement.
+    population, _ = resolve_controller_lifecycle_hook_population([], _context())
+
+    assert population == 0
+
+
+def test_the_controller_population_description_names_the_root_and_its_transitivity() -> None:
+    _, description = resolve_controller_lifecycle_hook_population([], _context())
+
+    assert "Document" in description
+    assert "transitively" in description
+
+
+def test_the_controller_resolver_is_registered_for_its_category() -> None:
+    assert (
+        POPULATION_RESOLVERS[EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK]
+        is resolve_controller_lifecycle_hook_population
+    )

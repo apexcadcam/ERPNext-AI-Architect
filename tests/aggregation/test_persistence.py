@@ -188,7 +188,11 @@ def test_a_pattern_set_with_no_patterns_but_a_skip_survives_the_round_trip(tmp_p
     original = _pattern_set(
         patterns=(),
         skipped_aggregations=(_skipped(),),
-        statistics=_statistics(categories_aggregated=0, patterns_produced=0),
+        # `categories_present` moves with `categories_aggregated`: the
+        # invariant added in Sprint 22 caught this fixture describing one
+        # aggregated and one skipped category out of two present, while
+        # aggregating none of them.
+        statistics=_statistics(categories_present=1, categories_aggregated=0, patterns_produced=0),
     )
 
     write_pattern_set(original, patterns_path, meta_path)
