@@ -2,7 +2,7 @@
 
 **Sprint:** 22
 **Version:** 1.0
-**Status:** Implemented. Sections marked *(final)* record decisions settled during implementation.
+**Status:** Implemented, including the Commit 7 correction in §4.4. Sections marked *(final)* record decisions settled during implementation.
 **Decides:** how the `controller_lifecycle_hook` population becomes derivable
 **Governed by:** [ADR-0015](../../adr/ADR-0015-cross-repository-inheritance-resolution.md) · **Evidence from:** [RQ-0002](../../research/RQ-0002-controller-lifecycle-hook-population.md)
 
@@ -211,6 +211,26 @@ class ClassDescentResult(BaseModel):     # frozen, extra="forbid"
 
 `POPULATION_BASES` moves that category from `skipped_no_population` to `aggregated`, and its `blocker` text is removed rather than edited.
 
+### 4.4 The membership invariant *(final — Commit 7)*
+
+**Supplying the denominator is only half of a valid measurement. The numerator must be drawn from that same denominator.**
+
+```
+occurrence_symbols ⊆ population_symbols
+    ⇒  0 ≤ occurrences ≤ population
+    ⇒  0 ≤ support ≤ 1
+```
+
+For `CONTROLLER_LIFECYCLE_HOOK`, a lifecycle record contributes to the numerator **only when its owning class is a member of the resolved `Document`-descendant population**.
+
+**Why this is not automatic.** A hook record states that a class defines a method whose *name* is a lifecycle hook name. That is not proof the class is a Frappe controller — any class may define a method called `validate` or `on_update`, and many do for entirely unrelated reasons. The collector cannot tell the difference, and §3.4 says it must not try: `class_definition` records exist precisely so the distinction is drawn later, from the resolved graph.
+
+**Why it matters.** Without the restriction, `occurrences` counted distinct symbols across *every* lifecycle record while `population` counted resolved descendants — two different sets. A ratio between different populations is not a share of anything: silently inflated where the numerator is small relative to the denominator, and **invalid outright** where it is not. Both were observed: `frappe`'s `validate` read `87/275` against an aligned figure of `84/275`, and a corpus small enough produced `occurrences > population`, failing `Pattern.support`'s own `le=1.0` constraint.
+
+**Clamping is forbidden.** Capping a support above `1.0` back to `1.0` would satisfy the constraint while leaving the measurement wrong, and would convert a loud failure into a quiet one. Membership is corrected instead — the numerator is narrowed, never the result.
+
+Enforced by construction before any grouping happens, through a registry parallel to the population dispatch. Full statement of the rule and its scope: **[Aggregation §5.1](PATTERN_AGGREGATION_SPECIFICATION.md)**; the decision and how it was found: **[D18](../DECISION_LOG.md)**.
+
 ## 5. Aggregation Contract Changes
 
 ### 5.1 `AggregationRequest`
@@ -387,6 +407,8 @@ Both ERPNext rows are listed deliberately: the difference between them **is** th
 Beyond before/after numbers, three properties that would otherwise fail silently:
 
 1. **Symbol join.** Every `controller_lifecycle_hook` symbol, with its final segment removed, matches a `class_definition` symbol in the same corpus. A single mismatch means the numerator and denominator describe different things.
+
+   **The join alone is not sufficient** (§4.4). Matching a class *definition* only proves the class exists; it does not prove the class is in the *population*. Both are required, and Commit 7 added the second.
 2. **Collector reach parity.** The set of classes the definition collector emits equals the set the hook collector can attribute a method to.
 3. **Supporting-corpus containment.** No `Pattern` in a `PatternSet` has a `supporting_evidence_id` originating in a supporting corpus, and no population count includes a symbol from one.
 

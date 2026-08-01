@@ -7,7 +7,7 @@ Ordered by dependency, not by size: **W5 unblocks the platform's central limitat
 | ID | Item | Kind | Blocking? |
 |---|---|---|---|
 | [W1](#w1--repository-wide-typing-cleanup) | Repository-wide typing cleanup | Debt, pre-existing | No |
-| [W2](#w2--repository-wide-formatting-normalization) | Repository-wide formatting normalization | Debt, optional | No |
+| [W2](#w2--repository-wide-formatting-normalization) | Repository-wide formatting normalization | Debt | Partially closed — 8 files remain |
 | [W3](#w3--hrms-support) | HRMS support | Contract change | No — needs a decision first |
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
 | [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | ✅ **Done** — closed by Sprint 22 |
@@ -45,20 +45,36 @@ A subscriber returning `bool` where the contract says `None` is worth understand
 
 ## W2 — Repository-wide formatting normalization
 
-**Kind:** Technical debt · **Origin:** mixed · **Priority:** low, explicitly optional
+**Kind:** Technical debt · **Origin:** mixed · **Priority:** low · **Status: partially closed, not as planned**
 
-`ruff format --check .` reports **9 files**. `ruff check` — the lint gate the project actually configures under `[tool.ruff.lint]` — passes repository-wide.
+### What the plan was, and what actually happened
+
+This item said the formatter should be run *"in a single isolated commit that touches no logic"*, precisely so that reformatting frozen Sprint 1 code would be a visible, deliberate act.
+
+**That is not what happened.** `runtime/cli.py` was normalized by `ruff format` inside [`d6d7a96`](../DECISION_LOG.md) — the Sprint 22 Commit 7 fix — as a side effect of formatting the file after editing it. The commit message does not mention it. The isolated formatting commit this item planned therefore never occurred, and this entry is corrected to describe the repository as it is rather than as the plan assumed.
+
+### Verified consequences
+
+Four of the eight reformatted hunks in `runtime/cli.py` fall in **frozen Sprint 1 code** — the option declarations, `doctor`, `plugins_list`, and `config_validate`.
+
+**No behaviour changed.** Confirmed by comparing the parsed AST of every Sprint 1 function against its state at `189090a`: `doctor`, `plugins_list`, `config_validate`, `runtime_info`, `run_goal`, `_build_runtime` and `_emit` are all **AST-identical**. The only function added is `_resolve_supporting_corpora`, which is Sprint 22's own `--supporting` resolution.
+
+The formatting is **kept**, by decision. It is not reverted and git history is not rewritten.
+
+### Current state
+
+`ruff format --check .` reports **8 files**, down from 9. `ruff check` — the lint gate the project actually configures under `[tool.ruff.lint]` — passes repository-wide.
 
 | Origin | Files |
 |---|---|
-| Sprint 1 era | `runtime/config/loader.py`, `runtime/events/bus.py`, `runtime/pipeline/engine.py`, `runtime/registry/plugin_registry.py`, `tests/test_cli.py`, `tests/test_event_bus.py`, `tests/test_pipeline_engine.py`, `tests/test_plugin_registry.py` |
-| Mixed | `runtime/cli.py` — 4 hunks pre-date the CLI work, 4 were added by it |
+| Sprint 1 era, still unformatted | `runtime/config/loader.py`, `runtime/events/bus.py`, `runtime/pipeline/engine.py`, `runtime/registry/plugin_registry.py`, `tests/test_cli.py`, `tests/test_event_bus.py`, `tests/test_pipeline_engine.py`, `tests/test_plugin_registry.py` |
+| **Normalized in `d6d7a96`** | `runtime/cli.py` — no longer in the list |
 
-The four new hunks are option declarations exceeding the 110-character line limit that the formatter would wrap. All 7 files the CLI sprint created are format-clean.
+### What remains
 
-**Why it was left:** running the formatter on `runtime/cli.py` also rewrites the 4 pre-existing hunks in frozen Sprint 1 code, so it is not a neutral cleanup.
+Eight Sprint 1 files, all untouched by any sprint since. The original two resolutions still stand for them: run `ruff format` on those eight in an isolated commit, **or** record a decision that `ruff format` is not a gate for this project and only `ruff check` is.
 
-**Done when:** either `ruff format .` is run repository-wide in a single isolated commit that touches no logic, **or** a decision is recorded that `ruff format` is not a gate for this project and only `ruff check` is. Either resolution is acceptable; the current in-between state is the only unsatisfactory one.
+**The lesson this item now also carries:** an incidental `ruff format` on an edited file silently normalizes whatever else is in that file. If the isolated-commit discipline matters, the formatter should be run with an explicit file list, not on a directory after an edit.
 
 ---
 
@@ -114,9 +130,15 @@ Option 1 looks strongest, but it changes the Evidence schema and would require r
 
 **Outcome.** The population is measured: **275** (frappe) and **510**
 (erpnext, with frappe supplied as resolution context). `validate` is
-implemented by 31.6% of frappe controllers and 35.3% of ERPNext
-controllers. `categories_skipped` is `0`; the `SKIPPED` section is empty
-because the denominator now exists, not because a row was removed.
+implemented by **30.5%** of frappe controllers (`84/275`) and **35.3%** of
+ERPNext controllers (`180/510`). `categories_skipped` is `0`; the
+`SKIPPED` section is empty because the denominator now exists, not
+because a row was removed.
+
+The frappe figure was reported as 31.6% at `v1.4.0` and corrected in
+Commit 7, which restricted the numerator to members of the population it
+is measured against — see [W6](#w6--a-diagnostic-statistic-for-filtered-occurrences)
+and [D18](../DECISION_LOG.md).
 
 What follows is the item as originally written.
 
