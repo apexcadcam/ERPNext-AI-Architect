@@ -55,7 +55,7 @@ This gap was found by **measurement, not assumption**, and it is recorded as a p
 
 ## 4. Non-goals
 
-- **Candidate Rules.** Sprint 23.
+- **Candidate Rules.** Out of scope for this engine — and they remained so. Sprint 23 investigated automated Candidate Formation and declined to build it: see [ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) and [RQ-0003](../../research/RQ-0003-evidence-derived-candidate-eligibility.md).
 - **Verification and trust.** Sprint 24.
 - **Cross-repository comparison.** Deliberately deferred: `frappe`'s 8.4% and `erpnext`'s 8.4% are not comparable quantities, because the populations are differently constituted. No `compare` surface exists anywhere, so nothing implies comparability before that is settled.
 - **Any severity, priority, recommendation, or rule field** on `Pattern`.

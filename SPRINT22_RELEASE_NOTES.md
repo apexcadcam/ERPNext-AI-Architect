@@ -142,7 +142,7 @@ By **Commit 6's consumer validation**, before the corrective release rather than
 
 - ~~`architect patterns aggregate --supporting frappe:v15.103.1`~~ — **done in Commit 6**; the corpus is reproducible through the CLI.
 - **Tag `v1.4.1`** once the release review passes.
-- **Sprint 23 — Candidate Rules.** Now genuinely possible: a measured hook-implementation rate is the kind of evidence a Rule can cite. Promotion still passes through the human review gate ADR-0002 requires.
+- ~~**Sprint 23 — Candidate Rules.**~~ **Investigated and declined.** Sprint 22 made the lifecycle-hook category *measurable*; Sprint 23 then examined whether those measurements could support automated Candidate Formation. [RQ-0003](research/RQ-0003-evidence-derived-candidate-eligibility.md) found that **frequency alone is not recommendation strength** and that candidate eligibility is *claim-relative* rather than a property of a Pattern, so [ADR-0016](adr/ADR-0016-no-automated-candidate-formation.md) built no such stage. Promotion to an Engineering Rule remains behind the human review gate ADR-0002 requires.
 - **`schema_version` enforcement**, or a recorded decision that it is documentation only.
 - **W1–W4** in the [backlog](docs/evidence-platform/BACKLOG.md), unchanged by this sprint.
 
