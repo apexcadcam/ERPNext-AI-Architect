@@ -12,6 +12,9 @@ Ordered by dependency, not by size: **W5 unblocks the platform's central limitat
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
 | [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | ✅ **Done** — closed by Sprint 22 |
 | [W6](#w6--a-diagnostic-statistic-for-filtered-occurrences) | Diagnostic statistic for filtered occurrences | Consideration | No |
+| [W7](#w7--durable-evidenceset-identity) | Durable `EvidenceSet` identity / locator | Research follow-up | **No** |
+| [W8](#w8--explicit-zero-observations-for-absent-subjects) | Explicit zero-observations for absent subjects | Research follow-up | **No** |
+| [W9](#w9--adr-documentation-provenance) | ADR documentation provenance and numbering | Repository hygiene | **No** |
 
 The release validation report numbered three of these as findings; the mapping, so the two vocabularies do not drift apart: **F1 → W4** (timestamps), **F2 → W1** (typing), **F3 → W2** (formatting). `W` identifiers are the ones to use from here.
 
@@ -199,3 +202,63 @@ Commit 7 established the membership invariant: an occurrence counts only when it
 **Cost:** options 1 and 2 are contract changes, so they move `schema_version` and require regenerating the corpus. That is why Commit 7 deliberately did not take them.
 
 **Done when:** one option is chosen and recorded — including option 3, which is a legitimate answer.
+
+---
+
+## W7 — Durable `EvidenceSet` identity
+
+**Kind:** Research follow-up · **Priority:** low · **Blocking: no** · **Raised by:** [RQ-0003 F7](../../research/RQ-0003-evidence-derived-candidate-eligibility.md)
+
+`PatternSet.source_evidence_set_id` is a **per-run UUID**, not a durable locator. Given only a `PatternSet`, nothing states which file or hash to open in order to resolve its `supporting_evidence_ids`.
+
+**Why it is not blocking.** RQ-0003 traced three Patterns end to end and every `supporting_evidence_id` resolved. `repository + version + commit` already identifies the corpus uniquely, and the conventional path `evidence-data/<repository>-<version>.evidence.jsonl` locates it. The UUID is redundant rather than load-bearing.
+
+**When it would become urgent.** If an artifact citing a Pattern ever travels outside this repository, or outlives its corpus. Neither is true today — and [ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) means no such artifact is being generated.
+
+**Open shapes**, none chosen: content-address the `EvidenceSet` by digest; record a relative artifact path on the `PatternSet`; or record a decision that `repository + version + commit` plus convention is the identity, and drop the UUID's implied role.
+
+**Done when:** one shape is chosen and recorded — including the third, which is a legitimate answer.
+
+---
+
+## W8 — Explicit zero-observations for absent subjects
+
+**Kind:** Research follow-up · **Priority:** low · **Blocking: no** · **Raised by:** [RQ-0003 F6](../../research/RQ-0003-evidence-derived-candidate-eligibility.md)
+
+Of the 11 recognised lifecycle-hook names, **four appear nowhere in frappe's artifact** — `before_submit`, `on_cancel`, `on_submit`, `on_update_after_submit`. There is no Pattern, no below-threshold entry, and no marker of any kind.
+
+`observed_below_threshold` is **not** a zero-observation: every entry records a real count that fell below the floor. Nothing in the artifact represents zero.
+
+**The standing rule, which this item does not relax:** absence is unusable as evidence, and **silence must never be interpreted as zero**. A naive reader could conclude from frappe's four missing names that submit hooks are discouraged in framework code; the real reason is that `frappe` core has few submittable DocTypes — a domain fact, not a practice signal.
+
+**Why it is not blocking.** No eligible claim in RQ-0003 depends on absence. Representing zeros would be a contract change solving a problem no current candidate has.
+
+**Open question:** should an aggregation emit an explicit zero for every recognised subject in a category's closed vocabulary that was observed zero times — and if so, is a zero meaningfully different from an absence when the vocabulary itself may be incomplete?
+
+**Done when:** either explicit zero-observations are designed and approved, or a decision is recorded that negative evidence stays permanently out of scope for this platform.
+
+---
+
+## W9 — ADR documentation provenance
+
+**Kind:** Repository hygiene / documentation provenance · **Priority:** low · **Blocking: no** · **Raised by:** establishing the next ADR number during Sprint 23
+
+Two observations, found while determining that `ADR-0016` was free. **Neither is a Sprint 23 functional blocker**, and neither was fixed.
+
+### 1. Referenced ADRs with no file
+
+`ADR-0003` through `ADR-0013` are referenced across sprint release notes, architecture packages, and at least one source docstring (`runtime/cli.py` cites `ADR-005`), but no corresponding files exist in [`adr/`](../../adr/). The directory holds six ADRs; the references imply roughly seventeen.
+
+A reader following any of those references today finds nothing.
+
+### 2. Two numbering conventions coexist
+
+`ADR-001-analysis-knowledge-direction.md` uses three digits; every other file uses four (`ADR-0001`, `ADR-0002`, `ADR-0009`, `ADR-0014`, `ADR-0015`, `ADR-0016`). Both are referenced in prose, sometimes in the same document.
+
+### Constraints on any future work here
+
+- **Reconstruct what historically existed first.** The sprint release notes describe "ADR Candidates A/B/C" that were approved during sprint reviews and may never have been written as files. Establishing what was actually decided comes before anything else.
+- **Do not create replacement ADRs from inference merely to fill numbering gaps.** An invented ADR is worse than a dangling reference: it looks authoritative and records a decision nobody made.
+- **Do not renumber existing ADRs** as part of that investigation. `adr/README.md` states an ADR is *"kept permanently as-is → superseded by a new ADR if the decision is later reversed (never edited in place)"*, and renumbering would break every existing citation. If unification is wanted, it needs its own architectural decision.
+
+**Done when:** the historical record is established and a decision is recorded — including "the gaps are permanent and the references are to sprint-review decisions rather than to files", which is a legitimate outcome.

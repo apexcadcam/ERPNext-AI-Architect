@@ -236,6 +236,28 @@ A behavioural occurrence contributes to `support` only when its subject entity i
 
 ---
 
+## D19 — Sprint 23 builds no Candidate Formation engine, because eligibility is claim-relative
+
+**Decided:** Sprint 23 · **Authority:** [ADR-0016](../adr/ADR-0016-no-automated-candidate-formation.md) · **Empirical basis:** [RQ-0003](../research/RQ-0003-evidence-derived-candidate-eligibility.md)
+
+**Instead of:** shipping the Candidate Formation stage the sprint was scoped to contain.
+
+**Why:** RQ-0003 examined all 29 published Patterns individually and found two claim-level conventions, both about how one decorator is spelled, both found by hand during the research. Sprint success is whether the question was answered, not whether a component shipped.
+
+The decisions, in short — [ADR-0016](../adr/ADR-0016-no-automated-candidate-formation.md) carries the reasoning and the rejected alternatives:
+
+- **No automated Candidate Formation stage** is justified at this corpus size.
+- **Eligibility is claim-relative**, not a property of a Pattern alone: `eligibility = relation(measurement semantics, proposed claim)`. The same measurement can give zero support to one claim and strong support to another.
+- **Pattern support is descriptive frequency, never recommendation strength.**
+- **Measurement-construction semantics may be producer-owned** — but only where they are objective facts the producer knows *by construction*.
+- **Producer metadata stays strictly non-normative.** It describes how a measurement was built; it never states eligibility, correctness, recommendation, salience, confidence or severity.
+- **Nothing is introduced:** no support threshold, no salience score, no `CandidateRule` model, no automatically generated Best Practices.
+- **Future Candidate Formation is demand-triggered**, not roadmap-triggered, and must operate on an **explicit proposed claim plus measurement semantics** — never on Pattern support alone.
+
+**Why it is here and not only in the ADR:** this is the first decision in the project whose outcome is *"build nothing"*. That is the kind most likely to be quietly reversed by a later reader who finds a roadmap entry and no component.
+
+---
+
 ## Decisions deliberately *not* taken
 
 | Not done | Why not, and where it is tracked |
