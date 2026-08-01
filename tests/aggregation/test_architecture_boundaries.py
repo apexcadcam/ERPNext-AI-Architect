@@ -370,8 +370,9 @@ def test_every_aggregation_file_was_actually_scanned() -> None:
 
 
 def test_pattern_set_has_no_candidate_rule_or_verification_field() -> None:
-    # §4: Candidate Rules are Sprint 23, Verification is Sprint 24 --
-    # neither is anticipated in this artifact.
+    # §4: neither Candidate Rules nor Verification is anticipated in this
+    # artifact. No automated candidate formation exists (ADR-0016), and
+    # `confidence` remains reserved and unused.
     field_names = set(PatternSet.model_fields)
     for forbidden in ("candidates", "candidate_rules", "rules", "verified", "verification"):
         assert forbidden not in field_names

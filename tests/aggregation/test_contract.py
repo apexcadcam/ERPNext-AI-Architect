@@ -250,8 +250,9 @@ def test_pattern_requires_a_population_description() -> None:
 
 
 def test_pattern_has_no_rule_or_recommendation_shaped_field() -> None:
-    # SS4: a Pattern states what is, never what to do. Candidate Rules are
-    # Sprint 23's own, separate stage.
+    # SS4: a Pattern states what is, never what to do. Promoting a
+    # measurement into guidance stays outside aggregation entirely
+    # (ADR-0016).
     field_names = set(Pattern.model_fields)
     for forbidden in ("rule", "rule_id", "recommendation", "severity", "priority", "action", "remediation"):
         assert forbidden not in field_names
@@ -686,8 +687,9 @@ def test_pattern_set_accepts_zero_patterns_alongside_a_populated_skip_list() -> 
 
 
 def test_pattern_set_has_no_candidate_rule_or_verification_field() -> None:
-    # SS4: Candidate Rules are Sprint 23, Verification is Sprint 24 --
-    # neither is anticipated in this schema.
+    # SS4: neither Candidate Rules nor Verification is anticipated in this
+    # schema. No automated candidate formation exists (ADR-0016), and
+    # `confidence` remains reserved and unused.
     field_names = set(PatternSet.model_fields)
     for forbidden in ("candidates", "candidate_rules", "rules", "verified", "verification", "approvals"):
         assert forbidden not in field_names

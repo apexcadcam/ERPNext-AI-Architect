@@ -59,8 +59,13 @@ class Pattern(BaseModel):
     """§7.3's one measured observation.
 
     A `Pattern` states what *is* -- never what to do about it. It carries
-    no severity, no priority, no rule, and no recommendation: promoting a
-    measurement into guidance is Sprint 23's own, separate, later job.
+    no severity, no priority, no rule, and no recommendation. Promoting a
+    measurement into guidance is not this engine's job, and RQ-0003 found
+    it is not a scheduled transformation either: eligibility is
+    claim-relative, so any future candidate formation needs an explicit
+    proposed claim and stays outside aggregation (ADR-0016). Engineering
+    Rule promotion continues through the existing research, corroboration
+    and Architecture Review lifecycle.
 
     `population` is constrained `ge=1` rather than `ge=0` deliberately:
     §5's "no population, no Pattern" principle then holds at the type
