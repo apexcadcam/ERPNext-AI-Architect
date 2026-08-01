@@ -11,6 +11,7 @@ Ordered by dependency, not by size: **W5 unblocks the platform's central limitat
 | [W3](#w3--hrms-support) | HRMS support | Contract change | No — needs a decision first |
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
 | [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | ✅ **Done** — closed by Sprint 22 |
+| [W6](#w6--a-diagnostic-statistic-for-filtered-occurrences) | Diagnostic statistic for filtered occurrences | Consideration | No |
 
 The release validation report numbered three of these as findings; the mapping, so the two vocabularies do not drift apart: **F1 → W4** (timestamps), **F2 → W1** (typing), **F3 → W2** (formatting). `W` identifiers are the ones to use from here.
 
@@ -152,3 +153,27 @@ There is nothing to compare for lifecycle hooks: today they are not measured at 
 | Existing `evidence_id` values | **Identical** — new records are added; none of the old ones move |
 
 Any drift in row one or two means the new collector perturbed the existing category, which would be a defect in the new work rather than a finding about the corpus. That is the real value of re-running: adding a third Evidence category must be **purely additive** to the two that exist.
+
+---
+
+## W6 — A diagnostic statistic for filtered occurrences
+
+**Kind:** Consideration, not yet a decision · **Priority:** low · **Raised by:** Sprint 22, Commit 7
+
+Commit 7 established the membership invariant: an occurrence counts only when its subject entity belongs to the population defining the support ([Aggregation §5.1](PATTERN_AGGREGATION_SPECIFICATION.md)). `OCCURRENCE_FILTERS` enforces it before grouping.
+
+**The observation.** That filtering is currently **invisible in the artifact.** A reader of frappe's `validate 84/275` cannot tell that three hook records were set aside, or why. The number is correct; the fact that a narrowing occurred is simply not recorded.
+
+**Why this is a consideration and not a defect.** Exclusion here is not a gap — it is the measurement being correct. `EMail.validate` is not a lifecycle hook, so leaving it out is not "something we could not measure". That is why it produces no `SkippedAggregation`: [D7](../DECISION_LOG.md) reserves that for what the platform can see and cannot honestly measure, and diluting it with correct exclusions would weaken the signal it exists to carry.
+
+**But the platform's own habit argues for visibility.** Every other narrowing this system performs is recorded — `observed_below_threshold` keeps subjects that did not reach the threshold, `unresolved_bases_count` keeps the residue. A filtered occurrence is the one narrowing that leaves no trace.
+
+**Shape it might take**, none chosen:
+
+1. A statistic — `occurrences_filtered: int` on `AggregationStatistics`, counting records excluded by an occurrence filter.
+2. Per-category detail, so a reader can see *which* category narrowed and by how much.
+3. Nothing, with a recorded decision that a correct exclusion needs no artifact trace.
+
+**Cost:** options 1 and 2 are contract changes, so they move `schema_version` and require regenerating the corpus. That is why Commit 7 deliberately did not take them.
+
+**Done when:** one option is chosen and recorded — including option 3, which is a legitimate answer.
