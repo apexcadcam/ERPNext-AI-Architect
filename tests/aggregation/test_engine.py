@@ -4,6 +4,8 @@ Specification v1.0 §10, §11).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from evidence.contract import (
@@ -711,6 +713,196 @@ def test_resolution_provenance_records_every_supporting_corpus() -> None:
     assert provenance.strategy is ResolutionStrategy.MULTI_CORPUS
     assert [ref.repository for ref in provenance.supporting_corpora] == [CanonicalRepository.FRAPPE]
     assert provenance.supporting_corpora[0].version == "v15.103.1"
+
+
+# -- Provenance ordering is canonical, not caller order (Sprint 24, Commit C0) --------------------------
+#
+# A supporting closure is set-valued everywhere else in the platform:
+# `RepositoryAdmission.required_supporting` is a `frozenset`, and nothing
+# reads precedence out of `supporting_corpora`. Persisting the order the
+# caller happened to use therefore made the artifact a function of the
+# command line rather than of the measurement -- invisible while every
+# artifact had at most one supporting corpus, and a `git diff` describing
+# no change at all the moment one had two.
+
+
+def _support_corpus(repository: CanonicalRepository, name: str, *, version: str, module: str) -> EvidenceSet:
+    """A one-class supporting corpus, identified precisely enough to sort."""
+
+    return EvidenceSet(
+        evidence_set_id=f"evset-{repository.value}",
+        schema_version="2.0",
+        repository=repository,
+        version=version,
+        commit=_COMMIT,
+        extracted_at="2026-07-27T12:00:00+00:00",
+        correlation_id="corr-1",
+        evidence=tuple(_class(name, "Document", module=module)),
+        errors=(),
+        truncated=False,
+        statistics=EvidenceStatistics(
+            files_examined=1, files_skipped=0, files_failed=0, evidence_extracted=2
+        ),
+    )
+
+
+def _aggregate_with(*supporting: EvidenceSet) -> PatternSet:
+    records = [*_class("A", "Document"), _hook("A", "validate")]
+    return aggregate_patterns(
+        AggregationRequest(
+            evidence_set=_evidence_set(*records, repository=CanonicalRepository.HRMS),
+            supporting_evidence_sets=supporting,
+            min_occurrences=1,
+            correlation_id="corr-1",
+            requested_by="test-suite",
+        )
+    )
+
+
+def test_two_supporting_corpora_produce_identical_provenance_in_either_order() -> None:
+    frappe = _support_corpus(CanonicalRepository.FRAPPE, "Mixin", version="v15.103.1", module="frappe.utils")
+    erpnext = _support_corpus(
+        CanonicalRepository.ERPNEXT, "Base", version="v15.102.0", module="erpnext.controllers"
+    )
+
+    forwards = _aggregate_with(frappe, erpnext)
+    backwards = _aggregate_with(erpnext, frappe)
+
+    assert forwards.resolution_provenance == backwards.resolution_provenance
+    assert forwards.resolution_provenance is not None
+    assert forwards.resolution_provenance.supporting_corpora == (
+        backwards.resolution_provenance.supporting_corpora  # type: ignore[union-attr]
+    )
+    assert forwards.patterns == backwards.patterns
+    assert forwards.statistics == backwards.statistics
+
+
+def test_supporting_corpora_are_sorted_by_repository_version_and_commit() -> None:
+    frappe = _support_corpus(CanonicalRepository.FRAPPE, "Mixin", version="v15.103.1", module="frappe.utils")
+    erpnext = _support_corpus(
+        CanonicalRepository.ERPNEXT, "Base", version="v15.102.0", module="erpnext.controllers"
+    )
+
+    provenance = _aggregate_with(frappe, erpnext).resolution_provenance
+
+    assert provenance is not None
+    # `erpnext` before `frappe`: alphabetical on the full identity, not the
+    # order the caller listed them in.
+    assert [ref.repository for ref in provenance.supporting_corpora] == [
+        CanonicalRepository.ERPNEXT,
+        CanonicalRepository.FRAPPE,
+    ]
+    keys = [(r.repository.value, r.version, r.commit) for r in provenance.supporting_corpora]
+    assert keys == sorted(keys)
+
+
+def test_canonical_order_holds_across_every_permutation_of_three_corpora() -> None:
+    """The general invariant, not merely the HRMS shape.
+
+    Three supporting corpora have six orderings; all six must serialize
+    the same way. Uses every canonical repository other than the measured
+    one, plus a synthetic second version of one of them -- which
+    `AggregationRequest` currently rejects as a duplicate repository, so
+    the third corpus is built by aggregating a different measured
+    repository instead of by weakening a validator.
+    """
+
+    import itertools
+
+    corpora = [
+        _support_corpus(CanonicalRepository.FRAPPE, "Mixin", version="v15.103.1", module="frappe.a"),
+        _support_corpus(CanonicalRepository.ERPNEXT, "Base", version="v15.102.0", module="erpnext.b"),
+        _support_corpus(CanonicalRepository.HRMS, "Leaf", version="15.51.0", module="hrms.c"),
+    ]
+    records = [*_class("A", "Document"), _hook("A", "validate")]
+
+    provenances = set()
+    for permutation in itertools.permutations(corpora):
+        # Measured repository excluded from its own support: rotate the
+        # measured one out rather than supplying it as context.
+        supporting = tuple(c for c in permutation if c.repository is not CanonicalRepository.FRAPPE)
+        result = aggregate_patterns(
+            AggregationRequest(
+                evidence_set=_evidence_set(*records, repository=CanonicalRepository.FRAPPE),
+                supporting_evidence_sets=supporting,
+                min_occurrences=1,
+                correlation_id="corr-1",
+                requested_by="test-suite",
+            )
+        )
+        assert result.resolution_provenance is not None
+        provenances.add(result.resolution_provenance.supporting_corpora)
+
+    assert len(provenances) == 1
+    assert [ref.repository.value for ref in next(iter(provenances))] == ["erpnext", "hrms"]
+
+
+def test_a_single_supporting_corpus_is_unchanged_by_canonicalisation() -> None:
+    # ERPNext's committed shape. One element sorts to itself, so its
+    # artifact cannot move.
+    frappe = _support_corpus(CanonicalRepository.FRAPPE, "Mixin", version="v15.103.1", module="frappe.utils")
+    records = [*_class("A", "Document"), _hook("A", "validate")]
+    result = aggregate_patterns(
+        AggregationRequest(
+            evidence_set=_evidence_set(*records, repository=CanonicalRepository.ERPNEXT),
+            supporting_evidence_sets=(frappe,),
+            min_occurrences=1,
+            correlation_id="corr-1",
+            requested_by="test-suite",
+        )
+    )
+
+    provenance = result.resolution_provenance
+    assert provenance is not None
+    assert provenance.strategy is ResolutionStrategy.MULTI_CORPUS
+    assert [ref.repository for ref in provenance.supporting_corpora] == [CanonicalRepository.FRAPPE]
+    assert provenance.supporting_corpora[0].version == "v15.103.1"
+
+
+def test_zero_supporting_corpora_is_unchanged_by_canonicalisation() -> None:
+    # Frappe's committed shape. Sorting an empty tuple is still empty, and
+    # `single_corpus` still holds.
+    records = [*_class("A", "Document"), _hook("A", "validate")]
+    provenance = aggregate_patterns(_request(*records, min_occurrences=1)).resolution_provenance
+
+    assert provenance is not None
+    assert provenance.strategy is ResolutionStrategy.SINGLE_CORPUS
+    assert provenance.supporting_corpora == ()
+
+
+def test_persisted_metadata_is_byte_identical_across_supply_orders(tmp_path: Path) -> None:
+    """The defect as a consumer would have met it: a `git diff` on bytes.
+
+    Run-specific fields are pinned to fixed values rather than excluded
+    from the comparison, so this proves *whole-file* byte identity rather
+    than identity of everything the test remembered to look at. The three
+    pinned fields are exactly the ones the contract defines as identifying
+    a run: `pattern_set_id` (a fresh UUID per run by design),
+    `aggregated_at` (a clock reading) and `correlation_id` (the caller's
+    own label). Nothing else is normalised.
+    """
+
+    from aggregation.persistence import write_pattern_set
+
+    frappe = _support_corpus(CanonicalRepository.FRAPPE, "Mixin", version="v15.103.1", module="frappe.utils")
+    erpnext = _support_corpus(
+        CanonicalRepository.ERPNEXT, "Base", version="v15.102.0", module="erpnext.controllers"
+    )
+    pinned = {
+        "pattern_set_id": "fixed-run-id",
+        "aggregated_at": "2026-08-01T00:00:00+00:00",
+        "correlation_id": "fixed-correlation",
+    }
+
+    written: list[bytes] = []
+    for index, order in enumerate(((frappe, erpnext), (erpnext, frappe))):
+        result = _aggregate_with(*order).model_copy(update=pinned)
+        meta_path = tmp_path / f"run{index}.meta.json"
+        patterns_path = tmp_path / f"run{index}.patterns.jsonl"
+        write_pattern_set(result, patterns_path, meta_path)
+        written.append(meta_path.read_bytes() + patterns_path.read_bytes())
+
+    assert written[0] == written[1]
 
 
 def test_provenance_is_absent_when_no_population_needed_resolution() -> None:

@@ -234,6 +234,23 @@ def _corpus_ref(evidence_set: EvidenceSet) -> CorpusRef:
     )
 
 
+def _canonical_corpus_order(ref: CorpusRef) -> tuple[str, str, str]:
+    """The full identity of a corpus, as a sort key.
+
+    **Deliberately total, rather than keying on `repository` alone.**
+    `AggregationRequest` does currently reject a repeated repository, so
+    repository by itself would sort every request this engine can receive
+    today. But `CorpusRef` exists precisely because a repository is not an
+    identity -- the same repository at two commits is two different bodies
+    of evidence -- and a key that is only unique by virtue of a validator
+    in a different class is a key that stops being unique the day that
+    validator is relaxed. Sorting on the whole identity costs nothing and
+    cannot become ambiguous.
+    """
+
+    return (ref.repository.value, ref.version, ref.commit)
+
+
 def _resolution_provenance(
     request: AggregationRequest,
     descent: ClassDescentResult,
@@ -248,6 +265,18 @@ def _resolution_provenance(
     ERPNext populations differing only by what was supplied, so an
     artifact that quotes one without recording its inputs cannot be
     reproduced. An artifact that quotes neither has nothing to record.
+
+    **`supporting_corpora` is canonically ordered here, not carried over
+    from the caller.** A supporting closure is set-valued at every other
+    layer -- `RepositoryAdmission.required_supporting` is a `frozenset`,
+    and nothing reads precedence out of the sequence -- so persisting the
+    order in which corpora happened to be supplied would let two runs of
+    the same measurement write different bytes. That is invisible while
+    every artifact has at most one supporting corpus, and becomes real the
+    moment one has two: the same command with its flags typed the other
+    way round would show up as a `git diff` describing no change at all.
+    Sorting at the point of construction is what keeps the artifact a
+    function of the measurement rather than of the command line.
     """
 
     if not aggregated_categories & _DESCENT_DERIVED_CATEGORIES:
@@ -256,7 +285,12 @@ def _resolution_provenance(
     supporting = request.supporting_evidence_sets
     return ResolutionProvenance(
         measured_corpus=_corpus_ref(request.evidence_set),
-        supporting_corpora=tuple(_corpus_ref(corpus) for corpus in supporting),
+        supporting_corpora=tuple(
+            sorted(
+                (_corpus_ref(corpus) for corpus in supporting),
+                key=_canonical_corpus_order,
+            )
+        ),
         strategy=(ResolutionStrategy.MULTI_CORPUS if supporting else ResolutionStrategy.SINGLE_CORPUS),
         unresolved_bases_count=len(descent.unresolved_bases),
     )

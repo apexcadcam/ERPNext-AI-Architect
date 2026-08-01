@@ -254,11 +254,30 @@ class ResolutionProvenance(BaseModel):
     third-party class). A non-zero count is normal and expected -- it is
     recorded rather than swallowed so the shape of what was *not*
     resolved stays visible.
+
+    **`supporting_corpora` is a set that is stored in a canonical order.**
+    Its meaning is *membership*: which corpora contributed resolution
+    context. A position in the sequence carries no precedence, no
+    priority, and no statement about which corpus mattered more -- the
+    resolver consults all of them equivalently, and `RepositoryAdmission`
+    models the same closure as a `frozenset`.
+
+    The field stays a `tuple` because JSON has no set, and because
+    changing a persisted field's type is a schema change this ordering
+    question does not justify. `aggregation.engine` therefore sorts on the
+    full corpus identity -- `(repository, version, commit)` -- before
+    constructing this object, so equivalent aggregations serialize
+    identically no matter what order the corpora were supplied in. A
+    reader may rely on the order being stable; a reader may not read
+    anything into it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     measured_corpus: CorpusRef
+
+    #: Canonically ordered by `(repository, version, commit)`; see the
+    #: class docstring. Membership is the meaning, never position.
     supporting_corpora: tuple[CorpusRef, ...] = ()
     strategy: ResolutionStrategy
     unresolved_bases_count: int = Field(ge=0)
