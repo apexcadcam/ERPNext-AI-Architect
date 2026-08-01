@@ -59,14 +59,31 @@ from aggregation.resolvers import (
 )
 
 #: §7.7's fixed schema version for this Sprint's contract shape. Bumped
-#: only when `Pattern`'s or `PatternSet`'s own fields change.
+#: when `Pattern`'s or `PatternSet`'s own fields change -- or, on the same
+#: rule `evidence.engine` already states, when a closed vocabulary the
+#: artifact is validated against gains a member.
+#:
+#: **The second clause was missing here until Sprint 24, and this comment
+#: is corrected rather than worked around.** It read "bumped *only* when
+#: `Pattern`'s or `PatternSet`'s own fields change", which was true of
+#: everything that had happened so far and would have argued against the
+#: bump below. The two producers write artifacts validated by the same
+#: enums; a version policy that differs between them means one of the two
+#: sidecars eventually lies about what it may contain.
 #:
 #: `2.0` from Sprint 22: `PatternSet` gained `resolution_provenance`, so
 #: the persisted metadata sidecar gains a key. An old reader given a `2.0`
 #: artifact rejects it loudly -- `PatternSet` is `extra="forbid"` -- which
 #: is the correct outcome, since silently ignoring the field would mean
 #: reading a population without the record of how it was reached.
-_SCHEMA_VERSION = "2.0"
+#:
+#: `3.0` is Sprint 24: `CanonicalRepository` gained `hrms` (ADR-0017), and
+#: it types `PatternSet.repository`, `Pattern.repository` and every
+#: `CorpusRef` in `resolution_provenance`. A `3.0` artifact can therefore
+#: name a repository a `2.0` reader has never seen, in four places. No
+#: field changed, and no compatibility alias is introduced: an old reader
+#: should reject a new artifact, which it does.
+_SCHEMA_VERSION = "3.0"
 
 #: §7.6's minimum-occurrence threshold, registered rather than inlined --
 #: the same Rule Metadata Registry discipline

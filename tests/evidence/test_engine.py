@@ -264,7 +264,7 @@ def test_extract_evidence_end_to_end_against_a_real_tree(tmp_path: Path) -> None
 
     evidence_set = extract_evidence(request)
 
-    assert evidence_set.schema_version == "2.0"
+    assert evidence_set.schema_version == "3.0"
     assert evidence_set.repository == CanonicalRepository.FRAPPE
     assert evidence_set.truncated is False
     assert evidence_set.statistics.files_examined == 4

@@ -54,14 +54,27 @@ from evidence.errors import EvidenceError_
 #: when `Evidence`'s own fields change -- or, as in Sprint 22, when the
 #: closed vocabularies it is validated against gain members.
 #:
-#: `2.0` because a `2.0` artifact can contain `class_definition` and
-#: `class_base_declaration` records, which a `1.0` reader has never seen.
-#: No field was added; `EvidenceCategory` and `CollectorName` grew, and
-#: both are closed enums, so an old reader rejects such a record loudly
-#: rather than skipping it. The version names what an artifact may
+#: `2.0` was Sprint 22: a `2.0` artifact can contain `class_definition`
+#: and `class_base_declaration` records, which a `1.0` reader has never
+#: seen. No field was added; `EvidenceCategory` and `CollectorName` grew,
+#: and both are closed enums, so an old reader rejects such a record
+#: loudly rather than skipping it. The version names what an artifact may
 #: contain, so it moves in the commit that first writes the new content --
 #: not earlier, when the label would have been untrue.
-_SCHEMA_VERSION = "2.0"
+#:
+#: `3.0` is Sprint 24, and is the same rule applied to a third closed
+#: vocabulary: `CanonicalRepository` gained `hrms` (ADR-0017), so a `3.0`
+#: artifact can carry `repository: "hrms"`, which a `2.0` reader rejects.
+#: Again no field changed. Moved in this commit rather than in the commit
+#: that added the enum member, because that commit wrote no artifact and
+#: the label would have promised content nothing yet produced.
+#:
+#: `frappe` and `erpnext` are regenerated at `3.0` alongside `hrms` rather
+#: than left at `2.0`. Their *content* is unchanged, but leaving them
+#: behind would mean the repository contains artifacts the current build
+#: cannot reproduce -- re-running extraction would emit `3.0` and differ
+#: from the committed file for no semantic reason.
+_SCHEMA_VERSION = "3.0"
 
 
 # -- Step 1: Root Resolution --------------------------------------------------------------------------

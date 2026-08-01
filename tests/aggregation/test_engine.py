@@ -502,7 +502,7 @@ def test_the_pattern_set_echoes_the_evidence_sets_provenance() -> None:
     assert result.repository is _NEUTRAL_REPOSITORY
     assert result.version == "v15.102.0"
     assert result.commit == _COMMIT
-    assert result.schema_version == "2.0"
+    assert result.schema_version == "3.0"
 
 
 def test_every_pattern_echoes_the_provenance_too() -> None:

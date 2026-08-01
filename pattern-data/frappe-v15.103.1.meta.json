@@ -1,7 +1,7 @@
 {
-  "aggregated_at": "2026-08-01T10:37:49.518893+00:00",
+  "aggregated_at": "2026-08-01T20:59:12.115422+00:00",
   "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
-  "correlation_id": "3d557c7a-9b85-43f1-af9d-d81715eddff7",
+  "correlation_id": "6737622a-f309-4305-ad94-1c87cdc213c1",
   "observed_below_threshold": [
     {
       "evidence_category": "whitelisted_api_decoration",
@@ -24,7 +24,7 @@
       "subject": "redis_cache"
     }
   ],
-  "pattern_set_id": "3a02a95c-e8c4-4a9c-9678-ad88668e1343",
+  "pattern_set_id": "0ee16037-5443-4fbd-bd51-54546434df45",
   "repository": "frappe",
   "resolution_provenance": {
     "measured_corpus": {
@@ -36,9 +36,9 @@
     "supporting_corpora": [],
     "unresolved_bases_count": 40
   },
-  "schema_version": "2.0",
+  "schema_version": "3.0",
   "skipped_aggregations": [],
-  "source_evidence_set_id": "bbfa2b12-f8a9-414d-94fd-eb521f820504",
+  "source_evidence_set_id": "fcfd2ca2-60c6-4301-9027-8578aae25270",
   "statistics": {
     "categories_aggregated": 2,
     "categories_present": 2,

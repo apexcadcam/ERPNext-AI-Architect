@@ -1,0 +1,17 @@
+{
+  "commit": "031e97ba05ea9ba3250278450c58be01b7774f6a",
+  "correlation_id": "3e7c92f9-ab90-47ae-9c34-8fae11f660da",
+  "errors": [],
+  "evidence_set_id": "a3f7fc2d-d9b2-4347-9858-e6bcc84d2bbc",
+  "extracted_at": "2026-08-01T20:58:52.092839+00:00",
+  "repository": "hrms",
+  "schema_version": "3.0",
+  "statistics": {
+    "evidence_extracted": 976,
+    "files_examined": 59174,
+    "files_failed": 0,
+    "files_skipped": 58561
+  },
+  "truncated": false,
+  "version": "15.51.0"
+}

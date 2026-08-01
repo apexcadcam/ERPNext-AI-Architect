@@ -1,0 +1,41 @@
+{
+  "aggregated_at": "2026-08-01T20:59:13.164176+00:00",
+  "commit": "031e97ba05ea9ba3250278450c58be01b7774f6a",
+  "correlation_id": "c1494ec7-2ceb-4a54-bea7-4e6d8f75e5ab",
+  "observed_below_threshold": [],
+  "pattern_set_id": "d0124c3e-3de0-4c3c-ac6c-177bf971e8f7",
+  "repository": "hrms",
+  "resolution_provenance": {
+    "measured_corpus": {
+      "commit": "031e97ba05ea9ba3250278450c58be01b7774f6a",
+      "repository": "hrms",
+      "version": "15.51.0"
+    },
+    "strategy": "multi_corpus",
+    "supporting_corpora": [
+      {
+        "commit": "1d14ba16398db3a220873509565c60f2932bed81",
+        "repository": "erpnext",
+        "version": "v15.102.0"
+      },
+      {
+        "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
+        "repository": "frappe",
+        "version": "v15.103.1"
+      }
+    ],
+    "unresolved_bases_count": 0
+  },
+  "schema_version": "3.0",
+  "skipped_aggregations": [],
+  "source_evidence_set_id": "a3f7fc2d-d9b2-4347-9858-e6bcc84d2bbc",
+  "statistics": {
+    "categories_aggregated": 2,
+    "categories_present": 2,
+    "categories_skipped": 0,
+    "evidence_records_consumed": 976,
+    "patterns_produced": 13,
+    "subjects_below_threshold": 0
+  },
+  "version": "15.51.0"
+}

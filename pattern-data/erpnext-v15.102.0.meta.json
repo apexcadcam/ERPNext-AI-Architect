@@ -1,7 +1,7 @@
 {
-  "aggregated_at": "2026-08-01T10:37:49.957323+00:00",
+  "aggregated_at": "2026-08-01T20:59:12.661555+00:00",
   "commit": "1d14ba16398db3a220873509565c60f2932bed81",
-  "correlation_id": "e47bac5f-8386-4bb5-8704-8fda68661540",
+  "correlation_id": "350193e2-49d1-4126-afd0-423c0d1b13cb",
   "observed_below_threshold": [
     {
       "evidence_category": "whitelisted_api_decoration",
@@ -19,7 +19,7 @@
       "subject": "staticmethod"
     }
   ],
-  "pattern_set_id": "733dffb9-4742-4ebe-8985-d0e2c769662c",
+  "pattern_set_id": "cc3d779f-e304-4dcc-abd6-4b309da231a0",
   "repository": "erpnext",
   "resolution_provenance": {
     "measured_corpus": {
@@ -37,9 +37,9 @@
     ],
     "unresolved_bases_count": 4
   },
-  "schema_version": "2.0",
+  "schema_version": "3.0",
   "skipped_aggregations": [],
-  "source_evidence_set_id": "5098874e-767a-43b2-9273-a798360aa813",
+  "source_evidence_set_id": "f99103f4-5075-4832-9b61-73f90234d8b5",
   "statistics": {
     "categories_aggregated": 2,
     "categories_present": 2,
