@@ -33,6 +33,29 @@ _API_COLLECTOR = CollectorName.WHITELISTED_API_DECORATION_COLLECTOR
 
 # -- Fixture builders --------------------------------------------------------------------------------
 
+#: The repository these fixtures measure when the identity is irrelevant.
+#:
+#: **`frappe`, because its registered supporting-corpus closure is empty**
+#: (ADR-0017). Almost every test in this file is about aggregation
+#: arithmetic -- thresholds, ordering, ratios, skips -- and would read the
+#: same against any repository; before admission was enforced they
+#: happened to use `erpnext`, which now requires `frappe` context and
+#: would refuse. Picking the repository whose closure is empty keeps those
+#: tests single-corpus and about what they were always about, rather than
+#: obliging each one to carry a supporting corpus it never examines.
+#:
+#: The three tests that are genuinely *about* cross-repository resolution
+#: override this with `CanonicalRepository.ERPNEXT` and supply `frappe` --
+#: the real canonical pairing, which admission accepts.
+#:
+#: Only `EvidenceSet.repository` decides identity here: the engine reads
+#: repository from the set, never from `Evidence.source` and never by
+#: parsing a dotted symbol name. The `erpnext.`-prefixed symbols below are
+#: therefore opaque labels, left unchanged deliberately so this migration
+#: is a change of one enum value per fixture rather than a rewrite of
+#: sixty string literals.
+_NEUTRAL_REPOSITORY = CanonicalRepository.FRAPPE
+
 
 def _evidence(
     *,
@@ -49,7 +72,7 @@ def _evidence(
         symbol=symbol,
         subject=subject,
         source=Source(
-            repository=CanonicalRepository.ERPNEXT,
+            repository=_NEUTRAL_REPOSITORY,
             version="v15.102.0",
             commit=_COMMIT,
             relative_path="erpnext/api.py",
@@ -60,11 +83,11 @@ def _evidence(
     )
 
 
-def _evidence_set(*records: Evidence) -> EvidenceSet:
+def _evidence_set(*records: Evidence, repository: CanonicalRepository = _NEUTRAL_REPOSITORY) -> EvidenceSet:
     return EvidenceSet(
         evidence_set_id="evset-1",
         schema_version="1.0",
-        repository=CanonicalRepository.ERPNEXT,
+        repository=repository,
         version="v15.102.0",
         commit=_COMMIT,
         extracted_at="2026-07-27T12:00:00+00:00",
@@ -474,7 +497,7 @@ def test_the_pattern_set_traces_back_to_its_source_evidence_set() -> None:
 
 def test_the_pattern_set_echoes_the_evidence_sets_provenance() -> None:
     result = aggregate_patterns(_request(*_whitelisted("erpnext.api.a"), *_whitelisted("erpnext.api.b")))
-    assert result.repository is CanonicalRepository.ERPNEXT
+    assert result.repository is _NEUTRAL_REPOSITORY
     assert result.version == "v15.102.0"
     assert result.commit == _COMMIT
     assert result.schema_version == "2.0"
@@ -484,7 +507,7 @@ def test_every_pattern_echoes_the_provenance_too() -> None:
     # A pattern is only true of a specific commit, so it carries it.
     result = aggregate_patterns(_request(*_whitelisted("erpnext.api.a"), *_whitelisted("erpnext.api.b")))
     for pattern in result.patterns:
-        assert pattern.repository is CanonicalRepository.ERPNEXT
+        assert pattern.repository is _NEUTRAL_REPOSITORY
         assert pattern.version == "v15.102.0"
         assert pattern.commit == _COMMIT
 
@@ -623,7 +646,7 @@ def test_a_supporting_corpus_enlarges_the_population_without_joining_it() -> Non
     alone = aggregate_patterns(_request(*records, min_occurrences=1))
     with_support = aggregate_patterns(
         AggregationRequest(
-            evidence_set=_evidence_set(*records),
+            evidence_set=_evidence_set(*records, repository=CanonicalRepository.ERPNEXT),
             supporting_evidence_sets=(supporting,),
             min_occurrences=1,
             correlation_id="corr-1",
@@ -652,7 +675,7 @@ def test_resolution_provenance_records_a_single_corpus_run() -> None:
     assert provenance is not None
     assert provenance.strategy is ResolutionStrategy.SINGLE_CORPUS
     assert provenance.supporting_corpora == ()
-    assert provenance.measured_corpus.repository is CanonicalRepository.ERPNEXT
+    assert provenance.measured_corpus.repository is _NEUTRAL_REPOSITORY
     assert provenance.measured_corpus.commit == _COMMIT
 
 
@@ -675,7 +698,7 @@ def test_resolution_provenance_records_every_supporting_corpus() -> None:
     records = [*_class("A", "Document"), _hook("A", "validate")]
     result = aggregate_patterns(
         AggregationRequest(
-            evidence_set=_evidence_set(*records),
+            evidence_set=_evidence_set(*records, repository=CanonicalRepository.ERPNEXT),
             supporting_evidence_sets=(supporting,),
             min_occurrences=1,
             correlation_id="corr-1",
@@ -834,7 +857,7 @@ def test_a_supporting_corpus_never_contributes_an_occurrence() -> None:
 
     result = aggregate_patterns(
         AggregationRequest(
-            evidence_set=_evidence_set(*records),
+            evidence_set=_evidence_set(*records, repository=CanonicalRepository.ERPNEXT),
             supporting_evidence_sets=(supporting,),
             min_occurrences=1,
             correlation_id="corr-1",

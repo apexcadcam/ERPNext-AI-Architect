@@ -51,6 +51,19 @@ def get_report():
 _COMMIT = "61ab7e2b2409b293ffd3c8f72d730fa89b201332"
 _VERSION = "v15.102.0"
 
+#: The repository the single-corpus fixtures measure.
+#:
+#: **`frappe`, because its registered supporting-corpus closure is
+#: empty** (ADR-0017). These tests exercise the aggregate command --
+#: its output sections, its skip rendering, its failure paths -- and
+#: never ERPNext semantics. `erpnext` now requires `frappe` context and
+#: would refuse, so measuring it here would test admission by accident
+#: in thirty places instead of deliberately in one.
+#:
+#: The cross-repository tests below keep `erpnext`, supplied with
+#: `frappe` -- the real canonical pairing, which admission accepts.
+_NEUTRAL_REPOSITORY = "frappe"
+
 
 @pytest.fixture
 def evidence_dir(tmp_path: Path) -> Path:
@@ -67,7 +80,7 @@ def evidence_dir(tmp_path: Path) -> Path:
         [
             "evidence",
             "extract",
-            "erpnext",
+            _NEUTRAL_REPOSITORY,
             "--version",
             _VERSION,
             "--commit",
@@ -87,13 +100,19 @@ def pattern_dir(tmp_path: Path) -> Path:
     return tmp_path / "pattern-out"
 
 
-def _args(evidence_dir: Path, pattern_dir: Path, *extra: str) -> list[str]:
+def _args(
+    evidence_dir: Path,
+    pattern_dir: Path,
+    *extra: str,
+    repository: str = _NEUTRAL_REPOSITORY,
+    version: str = _VERSION,
+) -> list[str]:
     return [
         "patterns",
         "aggregate",
-        "erpnext",
+        repository,
         "--version",
-        _VERSION,
+        version,
         "--evidence-dir",
         str(evidence_dir),
         "--output-dir",
@@ -109,8 +128,8 @@ def test_aggregate_succeeds_and_writes_both_artifacts(evidence_dir: Path, patter
     result = runner.invoke(app, _args(evidence_dir, pattern_dir))
 
     assert result.exit_code == 0
-    assert (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").exists()
-    assert (pattern_dir / f"erpnext-{_VERSION}.meta.json").exists()
+    assert (pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl").exists()
+    assert (pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.meta.json").exists()
 
 
 def test_summary_rows_are_engine_statistics_verbatim(evidence_dir: Path, pattern_dir: Path) -> None:
@@ -119,7 +138,7 @@ def test_summary_rows_are_engine_statistics_verbatim(evidence_dir: Path, pattern
     result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
     summary = json_module.loads(result.stdout)["summary"]
 
-    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    meta = json_module.loads((pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.meta.json").read_text())
     statistics = meta["statistics"]
 
     assert summary["evidence records consumed"] == str(statistics["evidence_records_consumed"])
@@ -153,7 +172,7 @@ def test_every_skipped_aggregation_is_reported(evidence_dir: Path, pattern_dir: 
     # Asserting a literal count here made this a test of the corpus
     # rather than of the command, and it broke the moment Sprint 22 added
     # structural Evidence that also has no population basis.
-    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    meta = json_module.loads((pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.meta.json").read_text())
     assert len(skipped) == len(meta["skipped_aggregations"])
     assert skipped, "the lifecycle-hook gap must always be among them"
 
@@ -165,7 +184,7 @@ def test_the_skip_reason_is_printed_in_full_and_unedited(evidence_dir: Path, pat
     result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
     skipped = json_module.loads(result.stdout)["skipped"]
 
-    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    meta = json_module.loads((pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.meta.json").read_text())
     reason = meta["skipped_aggregations"][0]["reason"]
 
     assert reason in skipped[0]
@@ -293,7 +312,7 @@ def test_a_failing_run_in_json_mode_is_still_parseable(tmp_path: Path, pattern_d
 
 def test_nothing_is_written_when_the_run_fails(tmp_path: Path, pattern_dir: Path) -> None:
     runner.invoke(app, _args(tmp_path / "empty", pattern_dir))
-    assert not (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").exists()
+    assert not (pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl").exists()
 
 
 def test_a_corrupt_evidence_artifact_fails_with_the_engines_own_message(
@@ -301,7 +320,7 @@ def test_a_corrupt_evidence_artifact_fails_with_the_engines_own_message(
 ) -> None:
     # `read_evidence_set` wraps every malformed-input case in
     # `EvidenceError_`; the CLI maps that to exit 1 and prints the message.
-    (evidence_dir / f"erpnext-{_VERSION}.evidence.jsonl").write_text("{not json at all\n")
+    (evidence_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.evidence.jsonl").write_text("{not json at all\n")
     result = runner.invoke(app, _args(evidence_dir, pattern_dir))
 
     assert result.exit_code == 1
@@ -321,7 +340,9 @@ def test_a_zero_min_occurrences_fails_cleanly(evidence_dir: Path, pattern_dir: P
 
 
 def test_version_is_required(evidence_dir: Path, pattern_dir: Path) -> None:
-    result = runner.invoke(app, ["patterns", "aggregate", "erpnext", "--evidence-dir", str(evidence_dir)])
+    result = runner.invoke(
+        app, ["patterns", "aggregate", _NEUTRAL_REPOSITORY, "--evidence-dir", str(evidence_dir)]
+    )
     assert result.exit_code != 0
 
 
@@ -392,7 +413,12 @@ def frappe_evidence_dir(tmp_path: Path) -> Path:
 
     frappe_src = tmp_path / "frappe-src"
     (frappe_src / "frappe" / "utils").mkdir(parents=True)
-    (frappe_src / "frappe" / "utils" / "nestedset.py").write_text("class Mixin(Document):\n    pass\n")
+    # `Mixin` carries a hook so this corpus can also be *measured*, not only
+    # supplied: a single-corpus provenance is only observable from a run
+    # whose lifecycle category actually resolves a population.
+    (frappe_src / "frappe" / "utils" / "nestedset.py").write_text(
+        "class Mixin(Document):\n    def validate(self):\n        pass\n"
+    )
     _extract_into(out, "frappe", "v15.103.1", frappe_src)
 
     return out
@@ -401,6 +427,31 @@ def frappe_evidence_dir(tmp_path: Path) -> Path:
 def test_supporting_is_optional_and_absent_by_default(evidence_dir: Path, pattern_dir: Path) -> None:
     result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
     assert result.exit_code == 0
+
+
+def test_aggregating_erpnext_without_frappe_is_refused(frappe_evidence_dir: Path, pattern_dir: Path) -> None:
+    """The user-visible behaviour change (ADR-0017).
+
+    This invocation used to succeed and publish a population resolved
+    without frappe context -- 492 against the real corpus, where the true
+    figure is 510. It is now refused, and the message names what to add.
+    """
+
+    result = runner.invoke(app, _args(frappe_evidence_dir, pattern_dir, repository="erpnext"))
+
+    assert result.exit_code == 1
+    assert "frappe" in result.stdout
+    assert "Traceback" not in result.stdout
+    assert not (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").exists()
+
+
+def test_a_refused_aggregation_still_emits_all_six_sections(
+    frappe_evidence_dir: Path, pattern_dir: Path
+) -> None:
+    result = runner.invoke(app, _args(frappe_evidence_dir, pattern_dir, repository="erpnext"))
+    for section in SECTION_ORDER:
+        assert section.upper().replace("_", " ") in result.stdout
+    assert result.stdout.rstrip().endswith("exit: 1")
 
 
 def test_supporting_appears_in_the_command_help() -> None:
@@ -413,7 +464,15 @@ def test_a_supporting_corpus_is_recorded_in_the_provenance(
     frappe_evidence_dir: Path, pattern_dir: Path
 ) -> None:
     result = runner.invoke(
-        app, _args(frappe_evidence_dir, pattern_dir, "--supporting", "frappe:v15.103.1", "--json")
+        app,
+        _args(
+            frappe_evidence_dir,
+            pattern_dir,
+            "--supporting",
+            "frappe:v15.103.1",
+            "--json",
+            repository="erpnext",
+        ),
     )
     assert result.exit_code == 0
 
@@ -427,10 +486,15 @@ def test_a_supporting_corpus_is_recorded_in_the_provenance(
 def test_without_supporting_the_strategy_is_single_corpus(
     frappe_evidence_dir: Path, pattern_dir: Path
 ) -> None:
-    result = runner.invoke(app, _args(frappe_evidence_dir, pattern_dir, "--json"))
+    # Measured against `frappe`, whose registered closure is empty. A
+    # single-corpus run is only a *publishable* result for such a
+    # repository: the same invocation against `erpnext` is now refused
+    # rather than recorded as single-corpus, which the admission tests
+    # assert directly.
+    result = runner.invoke(app, _args(frappe_evidence_dir, pattern_dir, "--json", version="v15.103.1"))
     assert result.exit_code == 0
 
-    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    meta = json_module.loads((pattern_dir / f"{_NEUTRAL_REPOSITORY}-v15.103.1.meta.json").read_text())
     provenance = meta["resolution_provenance"]
     assert provenance["strategy"] == "single_corpus"
     assert provenance["supporting_corpora"] == []
@@ -442,7 +506,15 @@ def test_a_supporting_corpus_contributes_no_pattern_of_its_own(
     # §5.2. frappe explains why an erpnext class is a controller; it does
     # not thereby become one, and it owns nothing in this artifact.
     result = runner.invoke(
-        app, _args(frappe_evidence_dir, pattern_dir, "--supporting", "frappe:v15.103.1", "--json")
+        app,
+        _args(
+            frappe_evidence_dir,
+            pattern_dir,
+            "--supporting",
+            "frappe:v15.103.1",
+            "--json",
+            repository="erpnext",
+        ),
     )
     assert result.exit_code == 0
 
@@ -461,15 +533,17 @@ def test_a_malformed_supporting_value_fails_with_a_readable_message(
 
 
 def test_supporting_may_not_name_the_measured_repository(evidence_dir: Path, pattern_dir: Path) -> None:
-    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", f"erpnext:{_VERSION}"))
+    result = runner.invoke(
+        app, _args(evidence_dir, pattern_dir, "--supporting", f"{_NEUTRAL_REPOSITORY}:{_VERSION}")
+    )
     assert result.exit_code == 1
     assert "its own resolution context" in result.stdout
 
 
 def test_a_missing_supporting_artifact_fails_with_a_next_step(evidence_dir: Path, pattern_dir: Path) -> None:
-    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", "frappe:v99.0.0"))
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", "erpnext:v99.0.0"))
     assert result.exit_code == 1
-    assert "architect evidence extract frappe" in result.stdout
+    assert "architect evidence extract erpnext" in result.stdout
 
 
 def test_the_same_supporting_repository_twice_is_rejected_by_the_engine(
@@ -486,6 +560,7 @@ def test_the_same_supporting_repository_twice_is_rejected_by_the_engine(
             "frappe:v15.103.1",
             "--supporting",
             "frappe:v15.103.1",
+            repository="erpnext",
         ),
     )
     assert result.exit_code == 1

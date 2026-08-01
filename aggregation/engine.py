@@ -13,6 +13,16 @@ exception, never a fabricated denominator, and never a division by zero.
 The one division in this module is guarded by an explicit zero check
 before it, and by `Pattern.population`'s own `ge=1` constraint after it.
 
+**One precondition does raise, and it is not a stage** (ADR-0017). Before
+any stage runs, `aggregate_patterns` refuses a request whose supporting
+corpora do not meet the measured repository's registered closure. That is
+not a statement about the data: it is a statement that the *inputs* are
+insufficient to compute a correct denominator at all, and recording it as
+a `SkippedAggregation` would file a caller error as a platform
+limitation. The distinction §10 draws is between data the engine cannot
+measure -- recorded -- and a request the engine must not answer --
+refused.
+
 Zero Reasoning Engine calls: counting is arithmetic.
 """
 
@@ -25,6 +35,7 @@ from datetime import UTC, datetime
 
 from evidence.contract import Evidence, EvidenceCategory, EvidenceSet
 
+from aggregation.admission import require_supporting_closure
 from aggregation.contract import (
     AggregationRequest,
     AggregationStatistics,
@@ -273,6 +284,25 @@ def aggregate_patterns(request: AggregationRequest) -> PatternSet:
     """
 
     evidence_set = request.evidence_set
+
+    # **First statement, before anything is resolved or counted**
+    # (ADR-0017 §6). An unmet supporting-corpus closure means the
+    # population this run would compute is knowably incomplete, and an
+    # incomplete population does not fail loudly -- it publishes a
+    # smaller, plausible denominator and then silently filters valid
+    # occurrences out of the numerator drawn against it. Refusing here
+    # rather than validating the result afterwards is what makes 492
+    # unpublishable for `erpnext`: no descent is resolved, no `Pattern`
+    # is built, and no `PatternSet` exists to inspect.
+    #
+    # A generic lookup, exactly like `get_population_basis(category)`
+    # below. The closure is data in `aggregation.admission`; this engine
+    # never names a repository.
+    require_supporting_closure(
+        evidence_set.repository,
+        frozenset(corpus.repository for corpus in request.supporting_evidence_sets),
+    )
+
     partitioned = _partition_by_category(evidence_set.evidence)
 
     # Resolved once, before the category loop, and shared by every

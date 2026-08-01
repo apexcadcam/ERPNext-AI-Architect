@@ -76,7 +76,13 @@ def artifacts(tmp_path: Path) -> dict[str, Path]:
     }
 
 
-def _extract(source_root: Path, artifacts: dict[str, Path], *, repository: str = "erpnext") -> EvidenceSet:
+#: `frappe` rather than `erpnext`, because these tests are about the
+#: composition root's wiring -- extract, persist, read back, aggregate,
+#: persist -- and never about either repository. `frappe` is the
+#: repository whose registered supporting-corpus closure is empty
+#: (ADR-0017), so a single-corpus aggregation of it is a complete,
+#: admissible measurement rather than a refusal.
+def _extract(source_root: Path, artifacts: dict[str, Path], *, repository: str = "frappe") -> EvidenceSet:
     return extract_repository_evidence(
         repository=repository,
         source_root=str(source_root),
@@ -146,8 +152,9 @@ def test_extract_accepts_the_repository_as_a_plain_string(
     source_root: Path, artifacts: dict[str, Path]
 ) -> None:
     # The caller never constructs `CanonicalRepository`; this function does.
-    evidence_set = _extract(source_root, artifacts, repository="frappe")
-    assert evidence_set.repository.value == "frappe"
+    # Deliberately not the default, so the string genuinely travels.
+    evidence_set = _extract(source_root, artifacts, repository="erpnext")
+    assert evidence_set.repository.value == "erpnext"
 
 
 def test_extract_rejects_an_unknown_repository_name(source_root: Path, artifacts: dict[str, Path]) -> None:

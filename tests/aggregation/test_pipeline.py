@@ -62,7 +62,7 @@ def _evidence(*, symbol: str, subject: str) -> Evidence:
         symbol=symbol,
         subject=subject,
         source=Source(
-            repository=CanonicalRepository.ERPNEXT,
+            repository=CanonicalRepository.FRAPPE,
             version="v15.102.0",
             commit=_COMMIT,
             relative_path="erpnext/api.py",
@@ -83,7 +83,7 @@ def _request() -> AggregationRequest:
     evidence_set = EvidenceSet(
         evidence_set_id="evset-1",
         schema_version="1.0",
-        repository=CanonicalRepository.ERPNEXT,
+        repository=CanonicalRepository.FRAPPE,
         version="v15.102.0",
         commit=_COMMIT,
         extracted_at="2026-07-27T12:00:00+00:00",

@@ -58,6 +58,16 @@ def get_report():
 _COMMIT = "61ab7e2b2409b293ffd3c8f72d730fa89b201332"
 _VERSION = "v15.102.0"
 
+#: The repository these fixtures measure.
+#:
+#: **`frappe`, because its registered supporting-corpus closure is
+#: empty** (ADR-0017). `patterns report` is read-only and repository-
+#: agnostic; every test here is about how an artifact is rendered. The
+#: fixture has to *produce* an artifact first, though, and producing
+#: one for `erpnext` now requires supplying `frappe` context -- an
+#: irrelevant complication for a rendering test.
+_NEUTRAL_REPOSITORY = "frappe"
+
 
 @pytest.fixture
 def pattern_dir(tmp_path: Path) -> Path:
@@ -76,7 +86,7 @@ def pattern_dir(tmp_path: Path) -> Path:
         [
             "evidence",
             "extract",
-            "erpnext",
+            _NEUTRAL_REPOSITORY,
             "--version",
             _VERSION,
             "--commit",
@@ -95,7 +105,7 @@ def pattern_dir(tmp_path: Path) -> Path:
         [
             "patterns",
             "aggregate",
-            "erpnext",
+            _NEUTRAL_REPOSITORY,
             "--version",
             _VERSION,
             "--evidence-dir",
@@ -114,7 +124,7 @@ def _args(pattern_dir: Path, *extra: str) -> list[str]:
     return [
         "patterns",
         "report",
-        "erpnext",
+        _NEUTRAL_REPOSITORY,
         "--version",
         _VERSION,
         "--pattern-dir",
@@ -126,8 +136,14 @@ def _args(pattern_dir: Path, *extra: str) -> list[str]:
 def _persisted(pattern_dir: Path) -> tuple[dict[str, object], list[dict[str, object]]]:
     """The artifact as it sits on disk, parsed independently of the CLI."""
 
-    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text(encoding="utf-8"))
-    lines = (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").read_text(encoding="utf-8").splitlines()
+    meta = json_module.loads(
+        (pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.meta.json").read_text(encoding="utf-8")
+    )
+    lines = (
+        (pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
     patterns = [json_module.loads(line) for line in lines if line.strip()]
     assert isinstance(meta, dict)
     return meta, patterns
@@ -225,7 +241,7 @@ def test_support_is_read_from_the_artifact_not_recomputed(pattern_dir: Path) -> 
     # The decisive test. A support value is rewritten on disk so that it
     # *disagrees* with occurrences/population. If the CLI ever divided the
     # two itself, it would print the recomputed figure and this fails.
-    patterns_path = pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl"
+    patterns_path = pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl"
     lines = patterns_path.read_text(encoding="utf-8").splitlines()
     first = json_module.loads(lines[0])
     assert first["occurrences"] / first["population"] != pytest.approx(0.1234)
@@ -243,7 +259,7 @@ def test_the_reported_counts_are_never_derived_from_the_evidence_set(pattern_dir
     # Occurrences and population are rewritten on disk; the report must
     # follow the artifact, because it is a renderer of a stored result and
     # not a second opinion about it.
-    patterns_path = pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl"
+    patterns_path = pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl"
     lines = patterns_path.read_text(encoding="utf-8").splitlines()
     first = json_module.loads(lines[0])
     first["occurrences"] = 7
@@ -337,7 +353,7 @@ def test_aggregate_and_report_describe_the_same_skip_identically(pattern_dir: Pa
         [
             "patterns",
             "aggregate",
-            "erpnext",
+            _NEUTRAL_REPOSITORY,
             "--version",
             _VERSION,
             "--evidence-dir",
@@ -422,7 +438,9 @@ def test_a_failing_run_in_json_mode_is_still_parseable(tmp_path: Path) -> None:
 
 
 def test_a_corrupt_pattern_artifact_fails_with_the_engines_own_message(pattern_dir: Path) -> None:
-    (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").write_text("{not json", encoding="utf-8")
+    (pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl").write_text(
+        "{not json", encoding="utf-8"
+    )
     result = runner.invoke(app, _args(pattern_dir))
     assert result.exit_code == 1
     assert "Traceback" not in result.stdout
@@ -431,7 +449,7 @@ def test_a_corrupt_pattern_artifact_fails_with_the_engines_own_message(pattern_d
 def test_an_artifact_violating_the_contract_fails_without_a_traceback(pattern_dir: Path) -> None:
     # `support` outside 0.0-1.0 is rejected by `Pattern`'s own field
     # constraint; §7 requires that reach the user as one readable line.
-    patterns_path = pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl"
+    patterns_path = pattern_dir / f"{_NEUTRAL_REPOSITORY}-{_VERSION}.patterns.jsonl"
     lines = patterns_path.read_text(encoding="utf-8").splitlines()
     first = json_module.loads(lines[0])
     first["support"] = 42.0
@@ -445,7 +463,9 @@ def test_an_artifact_violating_the_contract_fails_without_a_traceback(pattern_di
 
 
 def test_version_is_required(pattern_dir: Path) -> None:
-    result = runner.invoke(app, ["patterns", "report", "erpnext", "--pattern-dir", str(pattern_dir)])
+    result = runner.invoke(
+        app, ["patterns", "report", _NEUTRAL_REPOSITORY, "--pattern-dir", str(pattern_dir)]
+    )
     assert result.exit_code != 0
 
 

@@ -359,6 +359,7 @@ def test_every_aggregation_file_was_actually_scanned() -> None:
         AGGREGATION_DIR / "errors.py",
         AGGREGATION_DIR / "contract.py",
         AGGREGATION_DIR / "population.py",
+        AGGREGATION_DIR / "admission.py",
         AGGREGATION_DIR / "resolvers.py",
         AGGREGATION_DIR / "inheritance.py",
         AGGREGATION_DIR / "engine.py",
@@ -367,6 +368,87 @@ def test_every_aggregation_file_was_actually_scanned() -> None:
         AGGREGATION_DIR / "pipeline.py",
     }
     assert expected <= set(_all_imports_under(AGGREGATION_DIR))
+
+
+# -- (6) Repository identity is data in one module, never a branch anywhere ----------------------------
+
+#: The one production file permitted to name a `CanonicalRepository`
+#: member. ADR-0017 §4 forbids `if repository == X` constructs in the
+#: collectors, the inheritance resolver, the population resolvers and the
+#: aggregation engine, on the grounds that the branch is **data, not
+#: code**. Naming the file by exact path is what stops that allowance
+#: widening by accident.
+_REPOSITORY_AWARE_MODULES = frozenset({"aggregation/admission.py"})
+
+
+def _canonical_repository_member_references(py_file: Path) -> set[str]:
+    """Every `CanonicalRepository.<MEMBER>` attribute access in a file.
+
+    A bare `CanonicalRepository` -- as a type annotation, a `set[...]`
+    parameter or an iteration target -- is deliberately *not* a violation.
+    `aggregation.inheritance` legitimately annotates with the type while
+    knowing nothing about which repositories exist. Naming a member is the
+    thing that makes code repository-specific, so that is what is checked.
+    """
+
+    tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+    return {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "CanonicalRepository"
+    }
+
+
+def test_no_aggregation_module_branches_on_repository_identity() -> None:
+    violations = {
+        str(py_file.relative_to(REPO_ROOT)): sorted(members)
+        for py_file in sorted(AGGREGATION_DIR.rglob("*.py"))
+        if "__pycache__" not in py_file.parts
+        and str(py_file.relative_to(REPO_ROOT)) not in _REPOSITORY_AWARE_MODULES
+        and (members := _canonical_repository_member_references(py_file))
+    }
+    assert violations == {}
+
+
+def test_the_repository_aware_module_exception_is_real_and_exercised() -> None:
+    # An exception nothing uses is an exception that should not exist. The
+    # registry is the *only* place the closure data may live, so it must
+    # genuinely name repositories.
+    for relative_path in _REPOSITORY_AWARE_MODULES:
+        assert _canonical_repository_member_references(REPO_ROOT / relative_path)
+
+
+def test_no_evidence_module_branches_on_repository_identity() -> None:
+    # Extraction was measured running unmodified over a repository the enum
+    # did not yet contain (RQ-0004 F2). That property is worth keeping.
+    violations = {
+        str(py_file.relative_to(REPO_ROOT)): sorted(members)
+        for py_file in sorted(EVIDENCE_DIR.rglob("*.py"))
+        if "__pycache__" not in py_file.parts
+        and py_file.name != "contract.py"  # declares the enum itself
+        and (members := _canonical_repository_member_references(py_file))
+    }
+    assert violations == {}
+
+
+def test_the_composition_root_holds_no_admission_policy() -> None:
+    # ADR-0017 §4 and the CLI Spec §2: one authoritative policy owner. The
+    # composition root wires; it does not decide what may be measured.
+    imports = _direct_full_imports(REPO_ROOT / "composition_root" / "evidence_platform.py")
+    assert "aggregation.admission" not in imports
+    assert not _canonical_repository_member_references(
+        REPO_ROOT / "composition_root" / "evidence_platform.py"
+    )
+
+
+def test_the_runtime_cli_holds_no_admission_policy() -> None:
+    # The CLI surfaces the refusal through the error type it already
+    # catches. It must not re-derive the rule, or the two could disagree.
+    cli = REPO_ROOT / "runtime" / "cli.py"
+    assert "aggregation.admission" not in _direct_full_imports(cli)
+    assert not _canonical_repository_member_references(cli)
 
 
 def test_pattern_set_has_no_candidate_rule_or_verification_field() -> None:

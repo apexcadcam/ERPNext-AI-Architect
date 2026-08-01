@@ -55,6 +55,76 @@ class PopulationBasis(BaseModel):
     blocker: str | None = None
 
 
+class RepositoryAdmission(BaseModel):
+    """ADR-0017. One row of the repository admission registry: which
+    supporting corpora a repository's measured populations require before
+    a canonical measurement of it may be published.
+
+    **Deliberately shaped exactly like `PopulationBasis` above**, because
+    it answers the same kind of question about a different key.
+    `PopulationBasis` states, per Evidence category, what that category's
+    measurement requires; this states, per repository, what *its*
+    measurement requires. `aggregation.admission.REPOSITORY_ADMISSIONS`
+    is built from these, making admission executable rather than prose,
+    the same way `POPULATION_BASES` did for the Capability Matrix.
+
+    **`required_supporting` is a minimum, not a maximum** (ADR-0017 §2).
+    Supplying additional canonical context is permitted and recorded in
+    `ResolutionProvenance`; supplying less is refused. An empty closure is
+    a real, complete answer -- `frappe` resolves its own population
+    entirely -- and not a placeholder for research nobody has done.
+
+    A `frozenset` rather than a tuple, breaking this module's usual
+    tuple-over-collection habit for a reason: a closure has no order and
+    no duplicates, and saying so in the type means no consumer can read
+    significance into the sequence. ADR-0017 gives supporting order no
+    meaning, and a tuple would quietly invite someone to.
+
+    Carries **only** what enforcement and provenance need. No version --
+    pinning `frappe v15.103.1` here would make the registry a corpus
+    manifest, which it is not (ADR-0017 §2); which corpus satisfied the
+    requirement on a given run belongs to `ResolutionProvenance`. No
+    repository role, no lifecycle state, no capabilities, no discovery.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repository: CanonicalRepository
+    required_supporting: frozenset[CanonicalRepository]
+
+    #: Why this closure, in terms of what goes wrong without it -- a
+    #: population that resolves to the wrong number, not a dependency
+    #: relationship. The two are not the same thing (ADR-0017 §2).
+    justification: str = Field(min_length=1)
+
+    #: The research that measured it. ADR-0017 §9 makes every admitted
+    #: repository cost a research question; recording which one keeps that
+    #: cost visible rather than notional.
+    established_by: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _a_repository_is_not_its_own_resolution_context(self) -> RepositoryAdmission:
+        """A closure containing its own repository is a malformed record,
+        not a policy choice.
+
+        Checked here rather than left to the enforcement function because
+        it would never surface there: the measured repository can never
+        appear among the supplied supporting corpora -- `AggregationRequest`
+        and `resolve_descent` both already refuse that -- so a self-
+        referential entry would make its repository permanently
+        unaggregatable, with the refusal naming the repository being
+        measured. That reads as a platform bug rather than a caller error,
+        which is exactly what it would be.
+        """
+
+        if self.repository in self.required_supporting:
+            raise ValueError(
+                f"'{self.repository.value}' lists itself in required_supporting; a repository "
+                f"is the subject of its own measurement, not its resolution context"
+            )
+        return self
+
+
 class Pattern(BaseModel):
     """§7.3's one measured observation.
 

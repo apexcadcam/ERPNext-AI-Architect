@@ -21,6 +21,7 @@ from aggregation.contract import (
     Pattern,
     PatternSet,
     PopulationBasis,
+    RepositoryAdmission,
     ResolutionProvenance,
     ResolutionStrategy,
     SkippedAggregation,
@@ -706,6 +707,7 @@ def test_no_contract_model_has_an_llm_shaped_field() -> None:
         AggregationRequest,
         AggregationStatistics,
         ThresholdSpec,
+        RepositoryAdmission,
     )
     forbidden = {"prompt", "completion", "model", "temperature", "reasoning", "llm", "tokens"}
     for model in models:
