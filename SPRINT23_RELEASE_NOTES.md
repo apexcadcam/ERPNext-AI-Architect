@@ -71,6 +71,12 @@ Negative evidence remains unusable: **absence is not zero until an artifact expl
 
 Selected from demonstrated need rather than assumed sequencing. The highest-value genuinely open item is **[W3 — HRMS support](docs/evidence-platform/BACKLOG.md#w3--hrms-support)**: `hrms` is ranked `KS-0033` / #1 / P0 in this project's own committed source catalogue while the engine rejects it, and it is blocked on the framework-versus-consumer question rather than on effort.
 
+> **Superseded 2026-08-01, after `v1.4.2` shipped.** The sentence above is preserved as the `v1.4.2` record and is not corrected in place: Sprint 23 closed genuinely believing W3 was design-blocked, and that is a historical fact worth keeping.
+>
+> [RQ-0004](research/RQ-0004-hrms-as-a-measurable-repository.md) subsequently found the framework-versus-consumer blocker was **dissolved rather than answered** — it assumed the platform makes normative claims, and [ADR-0016](adr/ADR-0016-no-automated-candidate-formation.md) had already established that it does not. [ADR-0017](adr/ADR-0017-canonical-repository-admission.md) records the rule that replaced it: a repository is admitted only once its supporting-corpus closure has been established by measurement and can be enforced.
+>
+> W3's remaining work is therefore **implementation, not a design question**. `repository_role`, which the item anticipated, is no longer expected. Nothing is built yet.
+
 ## A note on method
 
 This is the first sprint in the project whose outcome is *build nothing*, and it is recorded deliberately rather than quietly.
