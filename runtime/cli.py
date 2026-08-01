@@ -516,7 +516,18 @@ DEFAULT_EVIDENCE_DIR = Path("evidence-data")
 DEFAULT_MAX_FILES = 200_000
 DEFAULT_TIMEOUT_SECONDS = 900.0
 
-RepositoryArgument = Annotated[str, typer.Argument(help="Canonical repository name: frappe or erpnext.")]
+#: The one place a repository name is described rather than derived.
+#:
+#: `--help` text has to be a literal, since `typer` reads it at import
+#: time and this module holds no engine import to enumerate the enum
+#: with. It is therefore the single closed-vocabulary site outside a test,
+#: and it is updated by hand whenever `CanonicalRepository` grows. The
+#: authoritative list a caller actually gets checked against remains
+#: `CANONICAL_REPOSITORY_NAMES`, which derives from the enum, and the
+#: error text below is built from that rather than from this string.
+RepositoryArgument = Annotated[
+    str, typer.Argument(help="Canonical repository name: frappe, erpnext or hrms.")
+]
 ExtractVersionOption = Annotated[
     str,
     typer.Option(

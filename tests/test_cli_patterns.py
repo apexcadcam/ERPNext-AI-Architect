@@ -454,6 +454,111 @@ def test_a_refused_aggregation_still_emits_all_six_sections(
     assert result.stdout.rstrip().endswith("exit: 1")
 
 
+def test_hrms_is_no_longer_rejected_as_an_unknown_repository(evidence_dir: Path, pattern_dir: Path) -> None:
+    """`hrms` passes repository parsing (ADR-0017).
+
+    It then fails on the next legitimate boundary -- there is no committed
+    HRMS Evidence artifact, because Commit B admits the repository without
+    producing a corpus. That is the correct failure, and the message names
+    the extract command as the next step.
+    """
+
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, repository="hrms", version="15.51.0"))
+
+    assert result.exit_code == 1
+    assert "Unknown repository" not in result.stdout
+    assert "No Evidence artifact" in result.stdout
+    assert "hrms-15.51.0.evidence.jsonl" in result.stdout
+
+
+def test_an_hrms_request_with_evidence_but_no_closure_reaches_the_admission_refusal(
+    tmp_path: Path, pattern_dir: Path
+) -> None:
+    """Past parsing, past artifact resolution, into the generic refusal.
+
+    Distinguishes two failures a caller could otherwise confuse: "that is
+    not a repository I know" and "that is a repository I know, measured
+    with insufficient context". Only the second names the corpora to add.
+
+    The Evidence here is a throwaway fixture, not a corpus: Commit B
+    commits no HRMS artifact, and this test must not imply one exists.
+    """
+
+    out = tmp_path / "hrms-evidence"
+    source = tmp_path / "hrms-src"
+    (source / "hrms" / "payroll").mkdir(parents=True)
+    (source / "hrms" / "payroll" / "employee.py").write_text(
+        "class EmployeeMaster(Employee):\n    def validate(self):\n        pass\n"
+    )
+    _extract_into(out, "hrms", "15.51.0", source)
+
+    result = runner.invoke(app, _args(out, pattern_dir, repository="hrms", version="15.51.0"))
+
+    assert result.exit_code == 1
+    assert "Unknown repository" not in result.stdout
+    assert "No Evidence artifact" not in result.stdout
+    assert "requires supporting corpora that were not supplied" in result.stdout
+    assert "erpnext" in result.stdout
+    assert "frappe" in result.stdout
+    assert not (pattern_dir / "hrms-15.51.0.patterns.jsonl").exists()
+
+
+def test_the_hrms_closure_is_supplied_through_the_existing_supporting_flag(
+    tmp_path: Path, pattern_dir: Path
+) -> None:
+    """No new flag is needed, and none was added.
+
+    Two repeats of the existing `--supporting <repository>:<version>` carry
+    the whole closure. The platform never fills it in: the same command
+    without the flags is the refusal asserted above.
+    """
+
+    out = tmp_path / "hrms-closure"
+    hrms_src = tmp_path / "hrms-closure-src"
+    (hrms_src / "hrms").mkdir(parents=True)
+    (hrms_src / "hrms" / "employee.py").write_text(
+        "class EmployeeMaster(Employee):\n    def validate(self):\n        pass\n"
+    )
+    _extract_into(out, "hrms", "15.51.0", hrms_src)
+
+    erpnext_src = tmp_path / "erpnext-closure-src"
+    (erpnext_src / "erpnext").mkdir(parents=True)
+    (erpnext_src / "erpnext" / "employee.py").write_text("class Employee(NestedSet):\n    pass\n")
+    _extract_into(out, "erpnext", _VERSION, erpnext_src)
+
+    frappe_src = tmp_path / "frappe-closure-src"
+    (frappe_src / "frappe").mkdir(parents=True)
+    (frappe_src / "frappe" / "nestedset.py").write_text("class NestedSet(Document):\n    pass\n")
+    _extract_into(out, "frappe", "v15.103.1", frappe_src)
+
+    result = runner.invoke(
+        app,
+        _args(
+            out,
+            pattern_dir,
+            "--supporting",
+            f"erpnext:{_VERSION}",
+            "--supporting",
+            "frappe:v15.103.1",
+            "--min-occurrences",
+            "1",
+            repository="hrms",
+            version="15.51.0",
+        ),
+    )
+
+    assert result.exit_code == 0
+    meta = json_module.loads((pattern_dir / "hrms-15.51.0.meta.json").read_text())
+    assert meta["repository"] == "hrms"
+    assert meta["version"] == "15.51.0"  # never normalised to v15.51.0
+    provenance = meta["resolution_provenance"]
+    assert provenance["strategy"] == "multi_corpus"
+    assert sorted(ref["repository"] for ref in provenance["supporting_corpora"]) == [
+        "erpnext",
+        "frappe",
+    ]
+
+
 def test_supporting_appears_in_the_command_help() -> None:
     result = runner.invoke(app, ["patterns", "aggregate", "--help"])
     assert result.exit_code == 0

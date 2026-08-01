@@ -51,8 +51,13 @@ def _evidence(**overrides: object) -> Evidence:
 # -- CanonicalRepository / EvidenceKind / EvidenceCategory / CollectorName ----------------------------
 
 
-def test_canonical_repository_defines_exactly_the_two_documented_values() -> None:
-    assert {member.value for member in CanonicalRepository} == {"frappe", "erpnext"}
+def test_canonical_repository_defines_exactly_the_admitted_repositories() -> None:
+    # Renamed from "the two documented values" when ADR-0017 admitted a
+    # third. The assertion is closed on purpose: a member added without a
+    # deliberate edit here is a repository nobody decided to admit, and
+    # `tests/aggregation/test_admission.py` separately requires each one to
+    # carry a researched supporting-corpus closure.
+    assert {member.value for member in CanonicalRepository} == {"frappe", "erpnext", "hrms"}
 
 
 def test_evidence_kind_defines_exactly_the_documented_value() -> None:

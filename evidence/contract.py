@@ -16,13 +16,43 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CanonicalRepository(str, enum.Enum):
-    """§2's closed set of pinned, read-only canonical references. Extending
-    to other frameworks (Django, Odoo, ...) is explicitly not a goal of
-    this Sprint or this schema (§4).
+    """§2's closed set of pinned, read-only canonical references.
+
+    **Closed, and default-deny is the point** (ADR-0017 §9). Extending to
+    other frameworks (Django, Odoo, ...) remains explicitly not a goal
+    (§4), and neither is supporting arbitrary Frappe applications. A
+    repository does not become a member because the collectors can parse
+    it: it becomes one after research has established what its
+    denominators mean and which corpora resolve them, which
+    `aggregation.admission` then enforces.
+
+    **Membership is therefore only half of admission.** Every member also
+    needs a registered supporting-corpus closure, and the two are added in
+    the same commit -- a member without one is a repository the platform
+    believes it may measure while nothing says what its measurement
+    requires. `hrms` needs both `frappe` and `erpnext`; measured with
+    fewer it produces 143, 145 or 150 controllers instead of 153, and
+    silently drops real ones from the numerator rather than raising
+    (RQ-0004 F3, F4).
+
+    The three members are not peers in any interpretive sense, and this
+    enum deliberately does not say which is a framework and which is a
+    consumer. That distinction is a *claim*, and claims live downstream in
+    Research and Architecture Review, never in the producer (ADR-0016,
+    ADR-0017 §8). `validate` reads 84/275 in `frappe`, 180/510 in
+    `erpnext` and 66/153 in `hrms`: structurally comparable measurements,
+    not comparable recommendations.
     """
 
     FRAPPE = "frappe"
     ERPNEXT = "erpnext"
+
+    #: Admitted by ADR-0017 on the evidence of RQ-0004. Its version string
+    #: is `15.51.0` -- no `v` prefix, unlike the other two, because
+    #: `hrms/__init__.py` declares it that way and `version` participates
+    #: in artifact identity. Normalising it is deliberately *not* done
+    #: here; the inconsistency is tracked as W10.
+    HRMS = "hrms"
 
 
 class EvidenceKind(str, enum.Enum):

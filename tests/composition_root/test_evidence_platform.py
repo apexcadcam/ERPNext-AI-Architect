@@ -115,7 +115,9 @@ def _aggregate(artifacts: dict[str, Path], *, min_occurrences: int = 1) -> Patte
 def test_canonical_repository_names_are_plain_strings() -> None:
     # The CLI puts these in --help and in its own error text. If they were
     # enum members, the CLI would be handling an engine type.
-    assert CANONICAL_REPOSITORY_NAMES == ("frappe", "erpnext")
+    # Ordered by enum declaration, so `--help` and the error text list the
+    # repositories in a stable order rather than a set's iteration order.
+    assert CANONICAL_REPOSITORY_NAMES == ("frappe", "erpnext", "hrms")
     for name in CANONICAL_REPOSITORY_NAMES:
         assert type(name) is str
 

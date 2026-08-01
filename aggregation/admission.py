@@ -90,6 +90,22 @@ REPOSITORY_ADMISSIONS: tuple[RepositoryAdmission, ...] = (
         ),
         established_by="RQ-0002 F6",
     ),
+    RepositoryAdmission(
+        repository=CanonicalRepository.HRMS,
+        required_supporting=frozenset({CanonicalRepository.FRAPPE, CanonicalRepository.ERPNEXT}),
+        justification=(
+            "Both corpora are required for correctness, not for better coverage: neither one "
+            "alone resolves the population. Measured across all four configurations, hrms yields "
+            "143 controllers alone, 145 with frappe, 150 with erpnext, and 153 with both -- and "
+            "the shortfall is not evenly spread, because at least one chain leaves hrms, passes "
+            "through an erpnext base, and reaches Document only through a frappe one. Supplying "
+            "a single supporting corpus therefore cannot be a partial improvement on the way to "
+            "a correct number; it is a different wrong number. Under every incomplete "
+            "configuration real hook-bearing controllers -- 6, then 4, then 2 -- fall outside the "
+            "population and are silently dropped from the numerator rather than raising."
+        ),
+        established_by="RQ-0004 F3",
+    ),
 )
 
 

@@ -157,7 +157,7 @@ def test_unknown_repository_fails_with_a_readable_message(source_root: Path, out
 
     assert result.exit_code == 1
     assert "Unknown repository 'apex_dashboard'" in result.stdout
-    assert "frappe, erpnext" in result.stdout
+    assert "frappe, erpnext, hrms" in result.stdout
     assert "Traceback" not in result.stdout
 
 

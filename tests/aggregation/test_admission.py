@@ -194,7 +194,7 @@ def test_the_registry_is_ordered_by_enum_declaration_order() -> None:
     assert registered_order == [name for name in declaration_order if name in registered_order]
 
 
-# -- The two registered closures ---------------------------------------------------------------------
+# -- The registered closures -------------------------------------------------------------------------
 
 
 def test_frappe_has_an_empty_closure() -> None:
@@ -207,6 +207,31 @@ def test_erpnext_requires_frappe() -> None:
     entry = get_repository_admission(CanonicalRepository.ERPNEXT)
     assert entry is not None
     assert entry.required_supporting == frozenset({CanonicalRepository.FRAPPE})
+
+
+def test_hrms_requires_both_frappe_and_erpnext() -> None:
+    entry = get_repository_admission(CanonicalRepository.HRMS)
+    assert entry is not None
+    assert entry.required_supporting == frozenset({CanonicalRepository.FRAPPE, CanonicalRepository.ERPNEXT})
+    assert entry.established_by == "RQ-0004 F3"
+
+
+def test_the_hrms_justification_states_both_corpora_are_required_for_correctness() -> None:
+    """Not "more context is better" -- a different wrong number.
+
+    The registry's justification is the only place a reader learns *why*
+    a closure is what it is, so it has to distinguish a correctness
+    requirement from a coverage preference. RQ-0004 F3 measured 143 / 145
+    / 150 / 153 across the four configurations: a single supporting corpus
+    is not a partial improvement toward 153, because at least one chain
+    needs both simultaneously.
+    """
+
+    entry = get_repository_admission(CanonicalRepository.HRMS)
+    assert entry is not None
+    assert "correctness, not for better coverage" in entry.justification
+    for measured in ("143", "145", "150", "153"):
+        assert measured in entry.justification
 
 
 def test_the_lookup_is_generic_rather_than_a_branch() -> None:
@@ -435,6 +460,188 @@ def test_admission_itself_checks_neither_duplicates_nor_self_support() -> None:
         CanonicalRepository.ERPNEXT,
         frozenset({CanonicalRepository.FRAPPE, CanonicalRepository.ERPNEXT}),
     )
+
+
+# -- HRMS: the closure that needs two corpora simultaneously -------------------------------------------
+#
+# RQ-0004 F3 measured every configuration against the real tree:
+#
+#     hrms alone              143   unresolved 10   hook owners outside 6
+#     hrms + frappe           145   unresolved  6   hook owners outside 4
+#     hrms + erpnext          150   unresolved  4   hook owners outside 2
+#     hrms + frappe + erpnext 153   unresolved  0   hook owners outside 0
+#
+# The decisive chain is `EmployeeMaster@hrms -> Employee@erpnext ->
+# NestedSet@frappe -> Document`, which neither supporting corpus resolves
+# on its own. That chain is recorded here and in the registry's
+# justification, and **nowhere in production logic**: the engine knows
+# only that a closure was declared and whether it was met.
+
+
+def _hrms_corpus() -> EvidenceSet:
+    """`EmployeeMaster(Employee)` -- the head of RQ-0004's decisive chain.
+
+    Its base is defined in erpnext, whose own base is defined in frappe,
+    so this class reaches `Document` only when *both* corpora are present.
+    Built this way so the acceptance test below measures something real
+    rather than asserting that a call returned.
+    """
+
+    return _corpus(
+        CanonicalRepository.HRMS,
+        *_class_records("EmployeeMaster", "Employee", repository=CanonicalRepository.HRMS),
+        _hook("EmployeeMaster", "validate", repository=CanonicalRepository.HRMS),
+    )
+
+
+def _erpnext_link_corpus() -> EvidenceSet:
+    """`Employee(NestedSet)` -- the middle link, which resolves nothing on
+    its own because `NestedSet` lives in frappe.
+    """
+
+    return _corpus(
+        CanonicalRepository.ERPNEXT,
+        *_class_records("Employee", "NestedSet", repository=CanonicalRepository.ERPNEXT),
+    )
+
+
+def test_hrms_alone_is_refused_naming_both_missing_corpora() -> None:
+    missing = missing_required_support(CanonicalRepository.HRMS, frozenset())
+    assert missing == (CanonicalRepository.ERPNEXT, CanonicalRepository.FRAPPE)
+
+    with pytest.raises(AggregationError_) as raised:
+        require_supporting_closure(CanonicalRepository.HRMS, frozenset())
+
+    message = str(raised.value)
+    assert "erpnext" in message
+    assert "frappe" in message
+
+
+def test_hrms_with_frappe_only_is_refused_naming_erpnext() -> None:
+    supplied = frozenset({CanonicalRepository.FRAPPE})
+    assert missing_required_support(CanonicalRepository.HRMS, supplied) == (CanonicalRepository.ERPNEXT,)
+
+    with pytest.raises(AggregationError_, match="erpnext"):
+        require_supporting_closure(CanonicalRepository.HRMS, supplied)
+
+
+def test_hrms_with_erpnext_only_is_refused_naming_frappe() -> None:
+    supplied = frozenset({CanonicalRepository.ERPNEXT})
+    assert missing_required_support(CanonicalRepository.HRMS, supplied) == (CanonicalRepository.FRAPPE,)
+
+    with pytest.raises(AggregationError_, match="frappe"):
+        require_supporting_closure(CanonicalRepository.HRMS, supplied)
+
+
+def test_hrms_with_both_corpora_is_accepted() -> None:
+    require_supporting_closure(
+        CanonicalRepository.HRMS,
+        frozenset({CanonicalRepository.FRAPPE, CanonicalRepository.ERPNEXT}),
+    )
+
+
+def test_neither_supporting_corpus_alone_is_a_partial_improvement() -> None:
+    """The measured fact the registry exists to encode.
+
+    Each single-corpus configuration is still refused, and refused for a
+    *different* missing repository. Nothing in the platform ranks 145
+    above 143 or 150 above 145: all three are wrong, and the closure is
+    met or it is not.
+    """
+
+    for supplied in (
+        frozenset(),
+        frozenset({CanonicalRepository.FRAPPE}),
+        frozenset({CanonicalRepository.ERPNEXT}),
+    ):
+        with pytest.raises(AggregationError_):
+            require_supporting_closure(CanonicalRepository.HRMS, supplied)
+
+
+def test_the_order_supporting_corpora_are_supplied_in_does_not_matter() -> None:
+    # A `frozenset` has no order, and the request carries a tuple whose
+    # order the contract gives no meaning to. Both orderings must behave
+    # identically, so a caller cannot get a refusal by listing the same
+    # two corpora the other way round.
+    forwards = aggregate_patterns(_request(_hrms_corpus(), _frappe_corpus(), _erpnext_link_corpus()))
+    backwards = aggregate_patterns(_request(_hrms_corpus(), _erpnext_link_corpus(), _frappe_corpus()))
+
+    assert forwards.repository is backwards.repository is CanonicalRepository.HRMS
+    assert forwards.patterns == backwards.patterns
+
+
+def test_the_missing_repository_diagnostic_is_deterministic() -> None:
+    # Sorted by repository value, not by set iteration order -- so the
+    # message is reproducible across runs and a caller can diff two logs.
+    for _ in range(5):
+        assert missing_required_support(CanonicalRepository.HRMS, frozenset()) == (
+            CanonicalRepository.ERPNEXT,
+            CanonicalRepository.FRAPPE,
+        )
+
+
+def test_hrms_closure_is_a_minimum_with_no_extra_context_expressible() -> None:
+    """The minimum-closure reading holds for HRMS too, vacuously.
+
+    Its closure already names every other canonical repository, and the
+    only remaining name is `hrms` itself, which `AggregationRequest`
+    refuses as self-support. So "closure plus extra" is unreachable for
+    this repository today -- not forbidden by admission, just not
+    expressible. `erpnext` is where the rule is actually exercised: its
+    closure is `{frappe}`, and supplying `hrms` as well must be accepted.
+    """
+
+    others = {member for member in CanonicalRepository if member is not CanonicalRepository.HRMS}
+    entry = get_repository_admission(CanonicalRepository.HRMS)
+    assert entry is not None
+    assert entry.required_supporting == others
+
+    require_supporting_closure(
+        CanonicalRepository.ERPNEXT,
+        frozenset({CanonicalRepository.FRAPPE, CanonicalRepository.HRMS}),
+    )
+
+
+# -- HRMS enforcement inside the engine ----------------------------------------------------------------
+
+
+def test_aggregating_hrms_without_its_closure_is_refused() -> None:
+    with pytest.raises(AggregationError_) as raised:
+        aggregate_patterns(_request(_hrms_corpus()))
+
+    assert "erpnext" in str(raised.value)
+    assert "frappe" in str(raised.value)
+
+
+def test_aggregating_hrms_with_one_corpus_is_still_refused() -> None:
+    with pytest.raises(AggregationError_, match="erpnext"):
+        aggregate_patterns(_request(_hrms_corpus(), _frappe_corpus()))
+
+    with pytest.raises(AggregationError_, match="frappe"):
+        aggregate_patterns(_request(_hrms_corpus(), _erpnext_link_corpus()))
+
+
+def test_aggregating_hrms_with_its_full_closure_succeeds() -> None:
+    result = aggregate_patterns(_request(_hrms_corpus(), _frappe_corpus(), _erpnext_link_corpus()))
+
+    assert result.repository is CanonicalRepository.HRMS
+    provenance = result.resolution_provenance
+    assert provenance is not None
+    assert provenance.measured_corpus.repository is CanonicalRepository.HRMS
+    assert {ref.repository for ref in provenance.supporting_corpora} == {
+        CanonicalRepository.FRAPPE,
+        CanonicalRepository.ERPNEXT,
+    }
+
+
+def test_a_supporting_corpus_still_owns_no_hrms_pattern() -> None:
+    # ADR-0015 containment is untouched by admission: supporting corpora
+    # supply resolution context and nothing else, whether there is one of
+    # them or two.
+    result = aggregate_patterns(_request(_hrms_corpus(), _frappe_corpus(), _erpnext_link_corpus()))
+
+    for pattern in result.patterns:
+        assert pattern.repository is CanonicalRepository.HRMS
 
 
 # -- Contract shape ------------------------------------------------------------------------------------

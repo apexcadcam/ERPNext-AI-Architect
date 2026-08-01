@@ -412,6 +412,30 @@ def test_no_aggregation_module_branches_on_repository_identity() -> None:
     assert violations == {}
 
 
+def test_admitting_a_repository_added_no_branch_anywhere() -> None:
+    """ADR-0017 §4, checked against the newest member specifically.
+
+    A registry is only worth having if adding to it stays a data change.
+    `HRMS` must appear in exactly one production file -- the registry --
+    and nowhere else: not in the engine, not in a resolver, not in the
+    collectors, not in the composition root, not in the CLI.
+    """
+
+    production_dirs = (
+        AGGREGATION_DIR,
+        EVIDENCE_DIR,
+        REPO_ROOT / "composition_root",
+        REPO_ROOT / "runtime",
+    )
+    naming_hrms = {
+        str(py_file.relative_to(REPO_ROOT))
+        for package_dir in production_dirs
+        for py_file in sorted(package_dir.rglob("*.py"))
+        if "__pycache__" not in py_file.parts and "HRMS" in _canonical_repository_member_references(py_file)
+    }
+    assert naming_hrms == {"aggregation/admission.py"}
+
+
 def test_the_repository_aware_module_exception_is_real_and_exercised() -> None:
     # An exception nothing uses is an exception that should not exist. The
     # registry is the *only* place the closure data may live, so it must

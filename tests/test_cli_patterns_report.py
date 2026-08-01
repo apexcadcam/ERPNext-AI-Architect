@@ -411,14 +411,65 @@ def test_a_missing_pattern_artifact_fails_with_a_next_step(tmp_path: Path) -> No
 
 
 def test_unknown_repository_fails_with_a_readable_message(pattern_dir: Path) -> None:
+    """A name outside the closed vocabulary is refused, and the message
+    lists every name that is inside it.
+
+    **This test used to name `hrms`, and it asserted the opposite of what
+    the platform now does.** ADR-0017 admitted `hrms`, so keeping that
+    fixture would have made this test defend the exclusion the sprint
+    exists to end -- a failing test if it were updated carelessly, and a
+    silently wrong guarantee if it were merely deleted.
+
+    Renaming the subject preserves the guarantee that was actually worth
+    having, and it is a stronger one than the original: the rejected name
+    is now one that can never be admitted. `apex_dashboard` is a real
+    application from the user's own estate, and W3 records those as
+    permanently out of corpus -- a personal-effort repository is not a
+    standard, and treating one as canonical would poison the very
+    distinction between "measured" and "recommended" that the platform
+    depends on. So this is not a placeholder that a future sprint might
+    make stale again; it is a case that must keep failing.
+    """
+
     result = runner.invoke(
         app,
-        ["patterns", "report", "hrms", "--version", _VERSION, "--pattern-dir", str(pattern_dir)],
+        [
+            "patterns",
+            "report",
+            "apex_dashboard",
+            "--version",
+            _VERSION,
+            "--pattern-dir",
+            str(pattern_dir),
+        ],
     )
     assert result.exit_code == 1
-    assert "Unknown repository 'hrms'" in result.stdout
-    assert "frappe" in result.stdout
-    assert "erpnext" in result.stdout
+    assert "Unknown repository 'apex_dashboard'" in result.stdout
+    # The message enumerates the admitted set from the enum, so a caller
+    # is told what is available rather than only what is not.
+    for admitted in ("frappe", "erpnext", "hrms"):
+        assert admitted in result.stdout
+
+
+def test_an_admitted_repository_is_not_rejected_as_unknown(pattern_dir: Path) -> None:
+    """`hrms` passes repository parsing and fails on the *next* boundary.
+
+    The guarantee: admission is decided by `CanonicalRepository`, and a
+    member of it is never turned away by the unknown-repository check.
+    What stops this command is the absence of an HRMS Pattern artifact --
+    which is correct, since no HRMS corpus is committed yet -- and the
+    message says so, naming the aggregate command as the next step.
+    """
+
+    result = runner.invoke(
+        app,
+        ["patterns", "report", "hrms", "--version", "15.51.0", "--pattern-dir", str(pattern_dir)],
+    )
+
+    assert result.exit_code == 1
+    assert "Unknown repository" not in result.stdout
+    assert "No Pattern artifact" in result.stdout
+    assert "architect patterns aggregate" in result.stdout
 
 
 def test_a_failing_run_still_emits_all_six_sections(tmp_path: Path) -> None:
