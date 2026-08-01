@@ -2,13 +2,13 @@
 
 Opened at the `v1.3.0` release. Each item states what is wrong or missing, why it matters, and what "done" means, so it can be picked up without re-deriving the context.
 
-Ordered by dependency, not by size: **W5 unblocks the platform's central limitation**, and **W3 depends on a question W3 itself has to answer first.**
+Ordered by dependency, not by size. Two items are now closed: **W5** measured the lifecycle-hook denominator, and **W3** — which depended on a question it had to answer first — was closed once [ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) dissolved that question and [RQ-0004](../../research/RQ-0004-hrms-as-a-measurable-repository.md) replaced it with a measured one.
 
 | ID | Item | Kind | Blocking? |
 |---|---|---|---|
 | [W1](#w1--repository-wide-typing-cleanup) | Repository-wide typing cleanup | Debt, pre-existing | No |
 | [W2](#w2--repository-wide-formatting-normalization) | Repository-wide formatting normalization | Debt | Partially closed — 8 files remain |
-| [W3](#w3--hrms-support) | HRMS support | Contract change | No — **architectural blocker resolved**, implementation not started |
+| [W3](#w3--hrms-support) | HRMS support | Contract change | ✅ **Done** — closed by Sprint 24 |
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
 | [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | ✅ **Done** — closed by Sprint 22 |
 | [W6](#w6--a-diagnostic-statistic-for-filtered-occurrences) | Diagnostic statistic for filtered occurrences | Consideration | No |
@@ -84,19 +84,53 @@ Eight Sprint 1 files, all untouched by any sprint since. The original two resolu
 
 ## W3 — HRMS support
 
-**Kind:** Contract change · **Priority:** high value · **Status: architectural blocker RESOLVED; implementation not started**
+**Kind:** Contract change · **Priority:** high value · **Status: ✅ CLOSED — implemented in Sprint 24**
 
-### Resolved by research
+### What was delivered, and what it does *not* mean
 
-[RQ-0004](../../research/RQ-0004-hrms-as-a-measurable-repository.md) measured HRMS 15.51.0 at `031e97ba` — 613 files, 0 parse failures, 976 records — and [ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md) recorded the resulting rule.
+**HRMS is an explicitly admitted canonical measured repository whose required supporting-corpus closure is `{erpnext, frappe}`.** That sentence is the whole claim, and its precision matters more than its brevity.
 
-**The blocker below — framework versus consumer — was dissolved rather than answered.** It assumed the platform makes normative claims. [ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) established that it does not: support is descriptive frequency, eligibility is claim-relative. `validate` reads `84/275` in frappe, `180/510` in erpnext and `66/153` in HRMS — identically constructed measurements that only a human-authored claim could confuse.
+It does **not** mean any of the following, and none of them became true:
 
-**What research found instead** is a different requirement: HRMS needs **both** `frappe` and `erpnext` as resolution context, and supplying fewer produces a plausible, silently wrong population (143 / 145 / 150 instead of 153) while dropping up to 6 real controllers from the numerator. ADR-0017 makes that closure an enforced admission precondition.
+- arbitrary Frappe applications are supported — admission stays default-deny, and each new repository costs a research question ([ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md) §9);
+- dependencies are discovered automatically — the closure was measured, not inferred from `required_apps` or an import graph;
+- `frappe` and `erpnext` are injected for you — a caller who omits them is refused and told what to add;
+- supporting corpora contribute occurrences — zero supporting records entered any HRMS numerator;
+- supporting corpora join the measured population — zero supporting classes entered it;
+- HRMS is a standard or a source of recommendations by virtue of being admitted. Admission says a measurement is well-defined and reproducible. It says nothing normative ([ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md)).
 
-**Still open:** implementation. Nothing is built — no enum member, no registry, no corpus. **`repository_role` is no longer expected**, since RQ-0004 found no measurement need for it.
+### How it got here — five stages, none of them skippable
 
-What follows is the item as originally written.
+This item was open from `v1.3.0` and was never simply a matter of editing an enum. The sequence is worth keeping, because each stage changed what the next one could be:
+
+1. **Originally blocked on framework-versus-consumer.** The item assumed that measuring a consumer application alongside the framework would blur "the framework defines this" with "one app happens to do this", and that a `repository_role` field would be needed to keep them apart.
+2. **[ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) dissolved the assumption underneath that blocker.** It established that the platform makes no normative claims at all: support is descriptive frequency and eligibility is claim-relative. `validate` reads `84/275` in frappe, `180/510` in erpnext and `66/153` in HRMS — identically constructed measurements that only a human-authored claim could confuse. The question was not answered; it stopped being the producer's question. **`repository_role` was therefore never built**, because RQ-0004 found no *measurement* that needed it.
+3. **[RQ-0004](../../research/RQ-0004-hrms-as-a-measurable-repository.md) measured HRMS and found a different, real requirement.** 613 Python files parsed, 0 parse failures, 976 records — and a lifecycle population of 143, 145, 150 or 153 depending purely on which corpora were supplied. The three incomplete configurations do not fail; they publish a smaller plausible denominator and silently drop 6, then 4, then 2 real controllers from the numerator. One class settles why both corpora are needed at once: `EmployeeMaster@hrms → Employee@erpnext → NestedSet@frappe → Document`.
+4. **[ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md) defined canonical repository admission.** Extractable ≠ researched ≠ safely measurable ≠ admitted. A repository's supporting-corpus closure is established by research, recorded declaratively, and enforced — not documented, because the failure is silent.
+5. **Sprint 24 implemented it in four reviewed steps**, in an order chosen so no intermediate commit could publish a wrong number:
+   - *policy enforcement first* — a declarative admission registry and a generic precondition at the aggregation entry point, carrying only the closures that already existed (`frappe → {}`, `erpnext → {frappe}`). Aggregating `erpnext` without `frappe` became a refusal rather than a 492-controller population;
+   - *admission* — `CanonicalRepository.HRMS` and its `{erpnext, frappe}` closure entry, added in one commit so no state ever existed where HRMS was admitted without a closure;
+   - *canonical provenance ordering* — a defect found before publication rather than after: persisted `supporting_corpora` preserved caller order, so the first two-corpus artifact would have depended on CLI flag order. Now sorted by `(repository, version, commit)`;
+   - *publication* — artifact schema `2.0 → 3.0`, all three corpora regenerated under the current producer, and the first committed HRMS Evidence and Pattern artifacts.
+
+### Measured outcome
+
+| | Value |
+|---|---|
+| Source | `hrms` `15.51.0` at `031e97ba05ea9ba3250278450c58be01b7774f6a` |
+| Evidence | 613 Python files parsed · 0 parse failures · 976 records |
+| Lifecycle population | **153** · `validate 66/153` · `unresolved_bases_count 0` |
+| Whitelist | population **198** · `frappe.whitelist 198/198` |
+| Provenance | `multi_corpus`, supporting `erpnext v15.102.0` + `frappe v15.103.1` |
+| Artifacts | `evidence-data/hrms-15.51.0.*`, `pattern-data/hrms-15.51.0.*`, schema `3.0` |
+
+Every figure reproduces RQ-0004 exactly. `frappe` and `erpnext` measurements are unchanged — 275 and 510, `validate 84/275` and `180/510` — and their Pattern files are byte-identical to their predecessors.
+
+**Done, verified:** `CanonicalRepository` gained its member; the conformance test formerly named `test_canonical_repository_defines_exactly_the_two_documented_values` was renamed and updated deliberately; `hrms` is extracted, aggregated and committed alongside the existing corpus; and permanent committed-corpus regression tests now protect all three sets of published figures.
+
+**Version-string note:** the artifact is `hrms-15.51.0.*`, with no `v` prefix, because `hrms/__init__.py` declares it that way and `version` participates in artifact identity. The inconsistency with the other two corpora is deliberate and remains [W10](#w10--version-string-format-consistency).
+
+What follows is the item as originally written, preserved unchanged. **Its framing was superseded at stage 2 above** — in particular, the `repository_role` proposal was never adopted.
 
 ---
 
@@ -284,7 +318,7 @@ A reader following any of those references today finds nothing.
 
 **Kind:** Observation · **Priority:** low · **Blocking: no** · **Raised by:** [RQ-0004](../../research/RQ-0004-hrms-as-a-measurable-repository.md)
 
-The committed corpora use a leading `v` — `frappe-v15.103.1`, `erpnext-v15.102.0` — while HRMS declares `__version__ = "15.51.0"` without one. An HRMS artifact would be named `hrms-15.51.0.evidence.jsonl` beside them.
+The committed corpora use a leading `v` — `frappe-v15.103.1`, `erpnext-v15.102.0` — while HRMS declares `__version__ = "15.51.0"` without one. Since Sprint 24 this is no longer hypothetical: `hrms-15.51.0.evidence.jsonl` and `hrms-15.51.0.patterns.jsonl` sit committed beside them.
 
 **No contract constrains the format.** `version` is `Field(min_length=1)` on `Source`, `Evidence`, `EvidenceSet`, `Pattern`, `PatternSet` and `CorpusRef` — checked across both contract modules. Nothing normalises, validates or parses it.
 

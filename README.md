@@ -22,7 +22,7 @@ This repository codifies the recurring, costly architectural mistakes made on re
 
 ## The Evidence Platform
 
-The knowledge in this repository is not produced by a language model. It is extracted from pinned checkouts of the canonical Frappe and ERPNext repositories, and every conclusion is traceable to the file and line it came from.
+The knowledge in this repository is not produced by a language model. It is extracted from pinned checkouts of the canonical Frappe, ERPNext and HRMS repositories, and every conclusion is traceable to the file and line it came from.
 
 ```bash
 architect evidence extract erpnext --version v15.102.0 --commit 1d14ba16398db3a220873509565c60f2932bed81

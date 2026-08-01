@@ -335,7 +335,7 @@ artifact carries no provenance because none was needed.
 
 ## 7. Schema Version
 
-**Both schema versions move to `2.0`.** Written out rather than left implicit, since the approved scope asks for exactly this.
+**Both schema versions move to `2.0`.** Written out rather than left implicit, since the approved scope asks for exactly this. *(Sprint 22's move. Both have since moved to `3.0` in Sprint 24, on the same rule: `CanonicalRepository` gained `hrms`.)*
 
 ### 7.1 Why it increases
 
@@ -453,6 +453,7 @@ Superficially attractive: DocTypes are what a Frappe developer thinks in.
 ## 10. Out of Scope
 
 - **Extending `CanonicalRepository`** ([W3](BACKLOG.md#w3--hrms-support)). This Sprint builds the mechanism `hrms` will need; it does not add `hrms`, and it does not settle framework-versus-consumer.
+  > **Closed in Sprint 24.** The mechanism this Sprint built turned out to be exactly what `hrms` needed, and nothing more was required of the resolver: it was measured running unmodified across three corpora. Framework-versus-consumer was never settled — [ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) removed it as a producer question, and [ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md) replaced it with a measured supporting-corpus closure. See [W3](BACKLOG.md#w3--hrms-support).
 - **Cross-repository comparison.** Still undefined, still no command surface.
 - **`schema_version` enforcement** (§7.4) — recorded as a finding, proposed for the backlog.
 - **Any second root beyond `Document`.** `resolve_descent` takes `root` as a parameter because the resolver has no reason to hardcode one, not because a second root is planned.

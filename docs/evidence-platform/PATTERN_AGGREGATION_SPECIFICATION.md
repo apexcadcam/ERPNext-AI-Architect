@@ -1,7 +1,7 @@
 # PATTERN AGGREGATION ENGINE — ARCHITECTURE SPECIFICATION
 
-**Version:** 1.0
-**Status:** Ratified and implemented. Released as `v1.2.0`.
+**Version:** 1.1
+**Status:** Ratified and implemented. Released as `v1.2.0`; §5.2 and §15.1 added in Sprint 24.
 **Package:** [`aggregation/`](../../aggregation/)
 
 > **Provenance of this document.** Written and approved during Sprint 21, before implementation; every section number cited throughout `aggregation/` refers to it. Committed to the repository on 2026-07-28, after the fact. Where this document and the code disagree, **the code and its tests are authoritative**; §17 records the deltas.
@@ -91,6 +91,30 @@ Not by a test written for it. Commit 6 added `--supporting` to the CLI, and the 
 
 This is the second time a **consumer** surfaced what full coverage did not — the first being the denominator gap itself (§2.1). Both are recorded because the pattern is the point: tests confirm what you thought to ask.
 
+## 5.2 Admission: the population must be resolvable before it is measured
+
+§5.1 forbids a numerator drawn from outside its denominator. **This forbids a denominator that is knowably incomplete in the first place** — the same invariant approached from the opposite side.
+
+A repository's populations may depend on class definitions that live in *other* repositories. When they do, resolving with fewer corpora than the population needs does not fail: it produces a smaller, entirely plausible denominator, and §5.1's occurrence filter then quietly removes the real occurrences that fell outside it. Both numbers look like measurements. Only one is one.
+
+**Each canonical repository therefore has a required supporting-corpus closure**, established by research and registered declaratively in [`aggregation/admission.py`](../../aggregation/admission.py) ([ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md)):
+
+| Measured repository | Required supporting corpora | Established by | Alone it resolves |
+|---|---|---|---|
+| `frappe` | none | RQ-0002 | 275 — correct |
+| `erpnext` | `frappe` | RQ-0002 F6 | 492 against a true 510 |
+| `hrms` | `erpnext` **and** `frappe` | RQ-0004 F3 | 143, 145 or 150 against a true 153 |
+
+**Enforced as a precondition, not validated as a result.** `aggregate_patterns` consults the registry as its first statement, before descent is resolved and before any `Pattern` is built, and raises `AggregationError_` naming exactly which repositories are missing. Refusing after the fact would mean the incomplete population had already been computed and could be logged, cached or returned by some later change.
+
+Three properties are deliberate:
+
+- **The closure is a minimum, never a maximum.** Extra canonical context is permitted and recorded in provenance. There is no upper bound to invent.
+- **It is data, not code.** The engine performs a generic lookup exactly as it does with `get_population_basis(category)`; no collector, resolver or engine branches on repository identity, and a boundary test asserts that `admission.py` is the only module under `aggregation/` that names a repository at all.
+- **The platform refuses; it never auto-injects.** Supplying the missing corpora automatically would make an artifact's inputs implicit, which is precisely what `ResolutionProvenance` exists to prevent.
+
+**Nothing here inspects `unresolved_bases_count`.** A residue of unresolved base names is normal — `frappe`'s own is 40 legitimate stdlib and third-party bases — so requiring it to reach zero would disqualify the framework itself. The requirement is semantic completeness of the *relevant* population, established by research.
+
 ## 6. `support`, not `confidence`
 
 `evaluation.contract.Confidence` already exists in this project as a closed enum meaning *how directly cited evidence supports a conclusion* — a judgement about inferential strength.
@@ -178,6 +202,18 @@ At the released version, against the committed Evidence corpus:
 | `erpnext` v15.102.0 | 1,245 | 705 | 3 | 3 | 1 |
 
 **The project's first empirically calibrated figure:** `frappe.validate_and_sanitize_search_inputs` occurs on 59 of 705 whitelisted symbols in ERPNext — `8.37%`. This confirmed a falsifiable prediction written into the implementation plan *before the engine existed*.
+
+## 15.1 Measured results at the current corpus
+
+The table above records `v1.2.0`, when the lifecycle-hook denominator did not yet exist and the corpus held two repositories. It is preserved as the released record. Against the corpus committed today, at artifact schema `3.0`:
+
+| Repository | Evidence consumed | Lifecycle population | `validate` | Whitelist population | Required closure supplied |
+|---|---|---|---|---|---|
+| `frappe` v15.103.1 | 2,595 | 275 | 84/275 | 520 | none — its closure is empty |
+| `erpnext` v15.102.0 | 3,260 | 510 | 180/510 | 705 | `frappe` |
+| `hrms` 15.51.0 | 976 | 153 | 66/153 | 198 | `erpnext` + `frappe` |
+
+Every figure is asserted by `tests/test_committed_corpus.py`, which reads the committed artifacts directly. Those tests load files; they do not re-run extraction against upstream source trees and prove nothing about whether the pinned upstream commits still exist.
 
 ## 16. Public API and persistence
 

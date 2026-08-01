@@ -35,7 +35,7 @@ Each stage remains a *precondition* for the next — this ordering is part of th
 
 **Folders:** [research/](research/), [rules/](rules/), [knowledge-sources/](knowledge-sources/)
 
-The [ERPNext Knowledge Source Catalog](knowledge-sources/KNOWLEDGE_SOURCE_CATALOG.md) identifies and scores every external source Research may draw evidence from — it is an input to this stage, not a stage of its own; no knowledge has been extracted from it yet. The [Knowledge Acquisition Architecture](docs/knowledge-pipeline/KNOWLEDGE_ACQUISITION_ARCHITECTURE.md) designs, but does not implement, the pipeline that would eventually turn that catalog into structured knowledge, and the [Crawler Framework Architecture](docs/crawler/CRAWLER_ARCHITECTURE.md) designs, but does not implement, the modular, plugin-based system that would realize that pipeline's Acquisition stage for hundreds of source connectors. The [Runtime Architecture](docs/runtime/RUNTIME_ARCHITECTURE.md) designs — and, unlike the two above, **now implements** — the domain-agnostic execution substrate (module system, plugin registry, pipeline engine, event bus, DI) that the Crawler and every future module would plug into; see `runtime/`. Built on it, the [Evidence Platform](docs/evidence-platform/README.md) is the first component that actually produces evidence at scale: it extracts verifiable facts from pinned checkouts of `frappe` and `erpnext` and aggregates them into measured Patterns, each traceable to a file and line. It does not feed Stage 1 automatically, and [ADR-0016](adr/ADR-0016-no-automated-candidate-formation.md) decided it will not: turning a measured Pattern into a Candidate Rule is not a scheduled transformation. It is where the evidence a future Rule cites will come from, supplied to Research by a human rather than promoted by a pipeline. The [AI Architect Studio](docs/studio/STUDIO_ARCHITECTURE.md) designs, but does not implement, the permanent, purely-observational module that would make all of the above visible in real time, built entirely from Event Bus subscriptions. Building any of this is future, separately-scoped work, gated by its own Architecture Review per [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
+The [ERPNext Knowledge Source Catalog](knowledge-sources/KNOWLEDGE_SOURCE_CATALOG.md) identifies and scores every external source Research may draw evidence from — it is an input to this stage, not a stage of its own; no knowledge has been extracted from it yet. The [Knowledge Acquisition Architecture](docs/knowledge-pipeline/KNOWLEDGE_ACQUISITION_ARCHITECTURE.md) designs, but does not implement, the pipeline that would eventually turn that catalog into structured knowledge, and the [Crawler Framework Architecture](docs/crawler/CRAWLER_ARCHITECTURE.md) designs, but does not implement, the modular, plugin-based system that would realize that pipeline's Acquisition stage for hundreds of source connectors. The [Runtime Architecture](docs/runtime/RUNTIME_ARCHITECTURE.md) designs — and, unlike the two above, **now implements** — the domain-agnostic execution substrate (module system, plugin registry, pipeline engine, event bus, DI) that the Crawler and every future module would plug into; see `runtime/`. Built on it, the [Evidence Platform](docs/evidence-platform/README.md) is the first component that actually produces evidence at scale: it extracts verifiable facts from pinned checkouts of `frappe`, `erpnext` and `hrms` and aggregates them into measured Patterns, each traceable to a file and line. It does not feed Stage 1 automatically, and [ADR-0016](adr/ADR-0016-no-automated-candidate-formation.md) decided it will not: turning a measured Pattern into a Candidate Rule is not a scheduled transformation. It is where the evidence a future Rule cites will come from, supplied to Research by a human rather than promoted by a pipeline. The [AI Architect Studio](docs/studio/STUDIO_ARCHITECTURE.md) designs, but does not implement, the permanent, purely-observational module that would make all of the above visible in real time, built entirely from Event Bus subscriptions. Building any of this is future, separately-scoped work, gated by its own Architecture Review per [ADR-0002](adr/ADR-0002-knowledge-pipeline-artifact-reconciliation.md).
 
 Nothing gets built before it's understood. `research/` holds open questions about how ERPNext/Frappe actually behaves; once a question is answered with enough confidence and evidence, it becomes a Rule in `rules/`. **Active** — this stage never "completes"; it's the ongoing engine of Phase 2.
 
@@ -76,8 +76,9 @@ Once an Agent needs to actually *do* something against a live bench (read a file
 
 **Phase 1 — Repository Foundation: complete.** **Phase 2 — Knowledge Engineering: active**, currently in Stage 1. `rules/` contains ten rules (`R001`–`R010`), all migrated to the canonical format. `research/` has produced its first research file ([RQ-0001](research/RQ-0001-native-first-discovery.md)) — see [research/README.md](research/README.md) for the ongoing backlog. Stages 2–4 have not started; their folders exist only so the intended shape of the repository is visible, per each folder's own README.
 
-**Evidence Platform: released at `v1.4.0`.** Extraction, Aggregation, and the `architect` CLI are
-implemented and validated against both canonical repositories. Sprint 22 added class-definition
+**Evidence Platform: released at `v1.4.2`; Sprint 24 is implemented and awaiting release.**
+Extraction, Aggregation, and the `architect` CLI are
+implemented and validated against every canonical repository. Sprint 22 added class-definition
 Evidence and cross-repository inheritance resolution, closing the platform's one declared measurement
 gap: lifecycle-hook populations are now measured at 275 controllers in `frappe` and 510 in `erpnext`
 when `frappe` is supplied as resolution context. See [Sprint 22 Release Notes](SPRINT22_RELEASE_NOTES.md)
@@ -88,6 +89,18 @@ feed an automated Candidate Formation stage. They cannot, at this corpus size:
 found that eligibility is *claim-relative* — the same measurement can give zero support to one claim and
 strong support to another — so
 [ADR-0016](adr/ADR-0016-no-automated-candidate-formation.md) decided to build no such engine.
+
+**Sprint 24 admitted a third canonical repository.** [RQ-0004](research/RQ-0004-hrms-as-a-measurable-repository.md)
+measured `hrms` and found that its lifecycle population reads 143, 145, 150 or 153 depending purely on
+which corpora resolve its inheritance — and that the wrong three publish a plausible number rather than
+raising. [ADR-0017](adr/ADR-0017-canonical-repository-admission.md) turned that into a rule: extractable is
+not measurable, and a repository is admitted only once its supporting-corpus closure has been established by
+research and can be enforced. `hrms 15.51.0` is now committed at population **153**, `validate 66/153`, with
+`erpnext` and `frappe` supplied as required context; `erpnext` requires `frappe`, and aggregating it alone is
+refused rather than published at 492. Artifact schema moved `2.0 → 3.0` because the closed repository
+vocabulary the artifacts are validated against gained a member. **This does not open the platform to
+arbitrary Frappe applications** — default deny is unchanged, and each further repository costs its own
+research question. See [Sprint 24 Release Notes](SPRINT24_RELEASE_NOTES.md).
 
 **Patterns remain descriptive measurements. There is no automatic or scheduled Pattern → Rule
 transformation.** Any future Candidate Formation is demand-triggered rather than roadmap-triggered, and

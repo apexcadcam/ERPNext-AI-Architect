@@ -1,6 +1,6 @@
 # EVIDENCE PLATFORM CLI — ARCHITECTURE SPECIFICATION
 
-**Version:** 1.1
+**Version:** 1.2
 **Status:** Ratified and implemented.
 **Surface:** [`runtime/cli.py`](../../runtime/cli.py), wired through [`composition_root/evidence_platform.py`](../../composition_root/evidence_platform.py)
 
@@ -47,9 +47,11 @@ architect evidence extract frappe --version v15.103.1 --commit 61ab7e2b… --sou
 
 **Single corpus** — the repository resolves its own class graph:
 
+**Single-corpus** — only `frappe`, whose registered closure is empty:
+
 ```
 architect patterns aggregate frappe --version v15.103.1
-architect patterns aggregate erpnext --version v15.102.0 --min-occurrences 5 --json
+architect patterns aggregate frappe --version v15.103.1 --min-occurrences 5 --json
 ```
 
 **Multi-corpus** — another repository supplies inheritance context:
@@ -57,6 +59,16 @@ architect patterns aggregate erpnext --version v15.102.0 --min-occurrences 5 --j
 ```
 architect patterns aggregate erpnext --version v15.102.0 --supporting frappe:v15.103.1
 ```
+
+**Two supporting corpora** — `hrms` requires both, and is refused with either missing:
+
+```
+architect patterns aggregate hrms --version 15.51.0 \
+    --supporting frappe:v15.103.1 \
+    --supporting erpnext:v15.102.0
+```
+
+Those three commands, plus the matching `evidence extract` calls, reproduce every committed Pattern corpus. The version strings are the repositories' own: `hrms` declares `15.51.0` with no `v` prefix, and it is not normalised, because `version` participates in artifact identity.
 
 - Reads from `evidence-data/`, writes to `pattern-data/`.
 - `--min-occurrences` defaults to the **registered** `MIN_OCCURRENCES_THRESHOLD`, read from the registry rather than repeated as a literal.
@@ -68,7 +80,33 @@ Repeatable. A supporting corpus contributes **class definitions used to resolve 
 
 **Why it exists, in one number.** 18 ERPNext controllers reach `Document` only through a base defined in `frappe` (`NestedSet`, `WebsiteGenerator`). Aggregating ERPNext alone resolves **492** controllers where the true population is **510** — a *wrong number*, not an error, and therefore invisible without this flag.
 
-The CLI validates only the **shape** of the value. Whether a corpus may legitimately support this subject — it must be a different repository, and each repository may appear at most once — is the engine's own precondition, left to the engine so exactly one place decides it.
+The CLI validates only the **shape** of the value. Whether a corpus may legitimately support this subject — it must be a different repository, each repository may appear at most once, and the measured repository's registered closure must be satisfied — is the engine's own precondition, left to the engine so exactly one place decides it.
+
+**Flag order carries no meaning.** A supporting closure is set-valued, and persisted provenance is sorted canonically by `(repository, version, commit)` before it is written. Typing the two `--supporting` flags the other way round produces a byte-identical artifact.
+
+#### Required closure — the platform refuses, and never fills it in
+
+Since [ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md) each canonical repository has a **required** supporting-corpus closure, established by research and enforced generically:
+
+| Measured | Required supporting corpora | If omitted |
+|---|---|---|
+| `frappe` | none | — |
+| `erpnext` | `frappe` | refused |
+| `hrms` | `frappe` **and** `erpnext` | refused |
+
+The closure is a **minimum**: supplying additional canonical context is permitted and recorded in provenance. Supplying less is **refused before any population is resolved** — the command exits `1` with the `ERRORS` section naming exactly which repositories are missing, and no artifact is written.
+
+```
+$ architect patterns aggregate hrms --version 15.51.0 --supporting frappe:v15.103.1
+
+ERRORS
+  aggregating 'hrms' requires supporting corpora that were not supplied: erpnext. …
+exit: 1
+```
+
+**The platform never auto-injects the missing corpora.** A caller who omits them is told what to add and re-runs the command. Automatic injection was rejected because it would make an artifact's inputs implicit, and provenance exists precisely so a reader can see which corpora produced a number. Nothing here discovers dependencies: the closure was measured per repository, not inferred from `required_apps` or an import graph.
+
+This is not a smaller-number-versus-bigger-number preference. `hrms` resolves 143 alone, 145 with `frappe`, 150 with `erpnext` and 153 with both; the first three do not fail, they publish a plausible wrong denominator and silently drop real controllers from the numerator.
 
 #### Reading the provenance it produces
 
@@ -76,15 +114,17 @@ Every `PatternSet` records how its populations were reached, so a stored figure 
 
 ```json
 "resolution_provenance": {
-  "measured_corpus":    {"repository": "erpnext", "version": "v15.102.0", "commit": "1d14ba16…"},
-  "supporting_corpora": [{"repository": "frappe", "version": "v15.103.1", "commit": "61ab7e2b…"}],
+  "measured_corpus":    {"repository": "hrms", "version": "15.51.0", "commit": "031e97ba…"},
+  "supporting_corpora": [{"repository": "erpnext", "version": "v15.102.0", "commit": "1d14ba16…"},
+                         {"repository": "frappe",  "version": "v15.103.1", "commit": "61ab7e2b…"}],
   "strategy": "multi_corpus",
-  "unresolved_bases_count": 4
+  "unresolved_bases_count": 0
 }
 ```
 
 - **`strategy`** is `single_corpus` or `multi_corpus`, and cannot contradict the corpora listed beside it — a validator rejects that combination.
 - **`unresolved_bases_count`** is scoped to the *measured* repository: base names it declares that match no class definition in any supplied corpus (`object`, `Exception`, third-party bases). Supplying more context can only ever **shrink** this number, never grow it.
+- **`supporting_corpora`** is **canonically ordered** by `(repository, version, commit)`, not by the order the flags were supplied. Position carries no precedence: `erpnext` appearing before `frappe` above is alphabetical, not architectural. Membership is the meaning. The ordering exists so that two runs of the same measurement serialize identically.
 - **`null`** means no population in that artifact required inheritance resolution — a statement, not a missing value.
 
 Without provenance, `510` and `492` are both defensible ERPNext populations differing only by what was supplied, and a reader could not tell which they were holding.

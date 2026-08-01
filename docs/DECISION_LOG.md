@@ -4,7 +4,7 @@ Why the Evidence Platform is shaped the way it is.
 
 The specifications say *what* the platform does. This file says *why* — the decision, the alternative that was rejected, and what made the difference. It exists because the reasoning behind a design is the first thing lost, and the first thing a future maintainer needs before changing anything.
 
-**Scope:** Sprints 20–22 and the CLI, `v1.1.0` → Sprint 22. One entry per decision that would be expensive to reverse or easy to undo by accident.
+**Scope:** Sprints 20–24 and the CLI, `v1.1.0` → Sprint 24. One entry per decision that would be expensive to reverse or easy to undo by accident.
 
 **How to read an entry:** the *Instead of* line is the option a reasonable engineer would have picked. If you are about to change something here, that line is usually what you are about to reintroduce.
 
@@ -278,11 +278,26 @@ The decisions, in short — [ADR-0016](../adr/ADR-0016-no-automated-candidate-fo
 
 ---
 
+## D21 — W3 closed: HRMS admitted with its measured closure, and nothing more
+
+**Decided:** Sprint 24 · **Implements:** [D20](#d20--extractable-is-not-measurable-admission-requires-a-researched-supporting-corpus-closure) / [ADR-0017](../adr/ADR-0017-canonical-repository-admission.md) · **Empirical basis:** [RQ-0004](../research/RQ-0004-hrms-as-a-measurable-repository.md) · **Closes:** [W3](evidence-platform/BACKLOG.md#w3--hrms-support) · **Record:** [Sprint 24 Release Notes](../SPRINT24_RELEASE_NOTES.md)
+
+**This is an implementation outcome, not a new architectural decision.** D20 already settled the rule; this records that it was built, and the two judgement calls that publication itself forced.
+
+- **`erpnext` lost a working command, deliberately.** Enforcing D20's closure generically meant `architect patterns aggregate erpnext` without `frappe` became a refusal rather than a 492-controller population. No published figure moved — the committed corpus was already aggregated with `frappe` — but this is a real behaviour change and is disclosed as one.
+- **Provenance ordering was canonicalised before the first two-corpus artifact existed.** Persisted `supporting_corpora` had preserved caller order. Invisible while every artifact had at most one supporting corpus; a `git diff` describing no change the moment one had two. Sorted by `(repository, version, commit)`, with the order carrying no precedence.
+- **Artifact schema moved `2.0 → 3.0`** because `CanonicalRepository` is a closed vocabulary the artifacts are validated against and it gained a member — the same rule Sprint 22 applied to `EvidenceCategory`. No field changed. All three corpora were regenerated together so the repository holds no artifact the current build cannot reproduce.
+- **Published measurements are now protected by tests rather than by release-time attention.** Until Sprint 24 nothing in the suite read `evidence-data/` or `pattern-data/` at all.
+
+**What admission did *not* grant:** arbitrary Frappe applications, automatic dependency discovery, auto-injected context, or any normative standing. `66/153` is a measurement, not a recommendation ([D19](#d19--sprint-23-builds-no-candidate-formation-engine-because-eligibility-is-claim-relative)).
+
+---
+
 ## Decisions deliberately *not* taken
 
 | Not done | Why not, and where it is tracked |
 |---|---|
-| Add `hrms` to `CanonicalRepository` | It is ranked #1 in this project's own source catalogue while the engine rejects it — but 90% adoption inside `frappe` means *this is the standard*, while 90% inside a consumer app means something else. Adding it before that is settled blurs a distinction the corpus cannot recover. [W3](evidence-platform/BACKLOG.md#w3--hrms-support) |
+| ~~Add `hrms` to `CanonicalRepository`~~ **— taken in Sprint 24** | Held back while the framework-versus-consumer question stood: 90% adoption inside `frappe` means *this is the standard*, while 90% inside a consumer app means something else. [ADR-0016](../adr/ADR-0016-no-automated-candidate-formation.md) dissolved the question by establishing that the producer makes no normative claims at all, and [RQ-0004](../research/RQ-0004-hrms-as-a-measurable-repository.md) replaced it with a measurable one — which corpora resolve HRMS's populations. Added with its required closure `{erpnext, frappe}`, never with a `repository_role`. [D21](#d21--w3-closed-hrms-admitted-with-its-measured-closure-and-nothing-more) |
 | Treat the author's own applications as corpus | Same reason, more sharply: they are personal-effort applications, not a standard |
 | A `compare` command | Cross-repository populations are differently constituted, so no surface exists that would imply otherwise |
 | Any LLM call in either engine | Zero, asserted by boundary tests scanning for provider imports. Extraction reads ASTs; aggregation counts |
