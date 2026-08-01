@@ -8,13 +8,14 @@ Ordered by dependency, not by size: **W5 unblocks the platform's central limitat
 |---|---|---|---|
 | [W1](#w1--repository-wide-typing-cleanup) | Repository-wide typing cleanup | Debt, pre-existing | No |
 | [W2](#w2--repository-wide-formatting-normalization) | Repository-wide formatting normalization | Debt | Partially closed — 8 files remain |
-| [W3](#w3--hrms-support) | HRMS support | Contract change | No — needs a decision first |
+| [W3](#w3--hrms-support) | HRMS support | Contract change | No — **architectural blocker resolved**, implementation not started |
 | [W4](#w4--timestamp-reproducibility-decision) | Timestamp reproducibility decision | Design decision | No |
 | [W5](#w5--sprint-22-denominator-work) | Sprint 22 — denominator work | Feature | ✅ **Done** — closed by Sprint 22 |
 | [W6](#w6--a-diagnostic-statistic-for-filtered-occurrences) | Diagnostic statistic for filtered occurrences | Consideration | No |
 | [W7](#w7--durable-evidenceset-identity) | Durable `EvidenceSet` identity / locator | Research follow-up | **No** |
 | [W8](#w8--explicit-zero-observations-for-absent-subjects) | Explicit zero-observations for absent subjects | Research follow-up | **No** |
 | [W9](#w9--adr-documentation-provenance) | ADR documentation provenance and numbering | Repository hygiene | **No** |
+| [W10](#w10--version-string-format-consistency) | Version-string format consistency | Observation | **No** |
 
 The release validation report numbered three of these as findings; the mapping, so the two vocabularies do not drift apart: **F1 → W4** (timestamps), **F2 → W1** (typing), **F3 → W2** (formatting). `W` identifiers are the ones to use from here.
 
@@ -83,7 +84,21 @@ Eight Sprint 1 files, all untouched by any sprint since. The original two resolu
 
 ## W3 — HRMS support
 
-**Kind:** Contract change · **Priority:** high value, blocked on a design question
+**Kind:** Contract change · **Priority:** high value · **Status: architectural blocker RESOLVED; implementation not started**
+
+### Resolved by research
+
+[RQ-0004](../../research/RQ-0004-hrms-as-a-measurable-repository.md) measured HRMS 15.51.0 at `031e97ba` — 613 files, 0 parse failures, 976 records — and [ADR-0017](../../adr/ADR-0017-canonical-repository-admission.md) recorded the resulting rule.
+
+**The blocker below — framework versus consumer — was dissolved rather than answered.** It assumed the platform makes normative claims. [ADR-0016](../../adr/ADR-0016-no-automated-candidate-formation.md) established that it does not: support is descriptive frequency, eligibility is claim-relative. `validate` reads `84/275` in frappe, `180/510` in erpnext and `66/153` in HRMS — identically constructed measurements that only a human-authored claim could confuse.
+
+**What research found instead** is a different requirement: HRMS needs **both** `frappe` and `erpnext` as resolution context, and supplying fewer produces a plausible, silently wrong population (143 / 145 / 150 instead of 153) while dropping up to 6 real controllers from the numerator. ADR-0017 makes that closure an enforced admission precondition.
+
+**Still open:** implementation. Nothing is built — no enum member, no registry, no corpus. **`repository_role` is no longer expected**, since RQ-0004 found no measurement need for it.
+
+What follows is the item as originally written.
+
+---
 
 `CanonicalRepository` is a closed enum of `frappe` and `erpnext`. `hrms` is rejected at four points, all derived from that one enum — so the code change itself is small.
 
@@ -262,3 +277,19 @@ A reader following any of those references today finds nothing.
 - **Do not renumber existing ADRs** as part of that investigation. `adr/README.md` states an ADR is *"kept permanently as-is → superseded by a new ADR if the decision is later reversed (never edited in place)"*, and renumbering would break every existing citation. If unification is wanted, it needs its own architectural decision.
 
 **Done when:** the historical record is established and a decision is recorded — including "the gaps are permanent and the references are to sprint-review decisions rather than to files", which is a legitimate outcome.
+
+---
+
+## W10 — Version-string format consistency
+
+**Kind:** Observation · **Priority:** low · **Blocking: no** · **Raised by:** [RQ-0004](../../research/RQ-0004-hrms-as-a-measurable-repository.md)
+
+The committed corpora use a leading `v` — `frappe-v15.103.1`, `erpnext-v15.102.0` — while HRMS declares `__version__ = "15.51.0"` without one. An HRMS artifact would be named `hrms-15.51.0.evidence.jsonl` beside them.
+
+**No contract constrains the format.** `version` is `Field(min_length=1)` on `Source`, `Evidence`, `EvidenceSet`, `Pattern`, `PatternSet` and `CorpusRef` — checked across both contract modules. Nothing normalises, validates or parses it.
+
+**Why it is not blocking, and was deliberately kept out of HRMS support:** `version` participates in `evidence_id` and `pattern_id` hashing and in artifact filenames. **Silently normalising it would change artifact identity** — the same class of act ADR-0015 and the Sprint 22 review refused elsewhere. It is cosmetic today and only becomes a hazard for tooling that later splits artifact filenames on `-`.
+
+**Open question:** should `version` be recorded exactly as the upstream repository declares it — which is the current, faithful behaviour — or normalised to one house format? The first is more honest about provenance; the second is friendlier to parsing. Either is defensible; the current mixture is what is not.
+
+**Done when:** one is chosen and recorded, including "record upstream verbatim and never parse filenames", which is a legitimate answer.

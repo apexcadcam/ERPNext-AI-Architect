@@ -258,6 +258,26 @@ The decisions, in short — [ADR-0016](../adr/ADR-0016-no-automated-candidate-fo
 
 ---
 
+## D20 — Extractable is not measurable: admission requires a researched supporting-corpus closure
+
+**Decided:** W3 / RQ-0004 · **Authority:** [ADR-0017](../adr/ADR-0017-canonical-repository-admission.md) · **Empirical basis:** [RQ-0004](../research/RQ-0004-hrms-as-a-measurable-repository.md)
+
+**Instead of:** adding `hrms` to the enum and trusting callers to remember two `--supporting` flags.
+
+**Why:** the collectors parse HRMS cleanly — 613 files, zero failures — in *every* resolution configuration. But its lifecycle population reads 143, 145, 150 or 153 depending on which corpora are supplied, and under the three incomplete ones Sprint 22's occurrence filter **silently drops real controllers** rather than raising. One class settles it: `EmployeeMaster@hrms → Employee@erpnext → NestedSet@frappe → Document`. Neither supporting corpus alone resolves it, so "supply the parent application" is not a correctness rule.
+
+- **A repository may be extractable and still not safely measurable.** Admission requires researched semantics, a known closure, and the correctness invariants holding under it.
+- **Closure is transitive and declared per repository**, and is a **minimum** — more context is permitted and recorded, less is refused.
+- **Enforced, not documented**, because the failure is silent. A convention cannot protect an invariant whose violation produces a plausible number instead of an error.
+- **Owned by a declarative registry** modelled on the Capability Matrix — consulted by a generic lookup, never a repository branch inside an engine. A native-first search found no existing owner: every registry keys on `EvidenceCategory`, and `runtime/config` is domain-agnostic by design.
+- **The platform refuses; it never auto-injects.** Reproducibility means the inputs are the caller's, recorded in provenance.
+- **`unresolved_bases_count == 0` is rejected** as an admission rule — `frappe`'s own residue is 40 legitimate external bases.
+- **Admission asserts nothing normative.** `84/275`, `180/510`, `66/153` are structurally comparable *measurements*, never comparable recommendations ([D19](#d19--sprint-23-builds-no-candidate-formation-engine-because-eligibility-is-claim-relative)).
+
+**Why it is here:** this is the first decision that makes *research a precondition for a capability*. The tempting shortcut — measure whatever parses — is exactly what it forbids.
+
+---
+
 ## Decisions deliberately *not* taken
 
 | Not done | Why not, and where it is tracked |
