@@ -26,15 +26,19 @@ The knowledge in this repository is not produced by a language model. It is extr
 
 ```bash
 architect evidence extract erpnext --version v15.102.0 --commit 1d14ba16398db3a220873509565c60f2932bed81
-architect patterns aggregate erpnext --version v15.102.0
+architect patterns aggregate erpnext --version v15.102.0 --supporting frappe:v15.103.1
 architect patterns report erpnext --version v15.102.0
 ```
 
 Extraction emits one record per single observed fact; aggregation turns those into measured Patterns — but only where a denominator genuinely exists. Where it does not, the platform records a typed, persisted skip stating exactly why, rather than quoting a ratio it cannot support.
 
+`--supporting` is not optional decoration. Each repository has a required supporting-corpus closure, established by measurement and enforced: `frappe` needs none, `erpnext` requires `frappe`, and `hrms` requires both. Aggregating ERPNext alone would resolve 492 controllers against a true 510 — a wrong number rather than an error — so the platform refuses and names what is missing instead of publishing the undercount.
+
 Full design, current measurements, and known limits: **[docs/evidence-platform/](docs/evidence-platform/)**,
-the [Evidence Platform Release Notes through v1.3.0](EVIDENCE_PLATFORM_RELEASE_NOTES.md), and the
-[Sprint 22 / v1.4.0 Release Notes](SPRINT22_RELEASE_NOTES.md).
+the [Evidence Platform Release Notes through v1.3.0](EVIDENCE_PLATFORM_RELEASE_NOTES.md), the
+[Sprint 22 / v1.4.0 Release Notes](SPRINT22_RELEASE_NOTES.md), the
+[Sprint 23 / v1.4.2 Release Notes](SPRINT23_RELEASE_NOTES.md), and the
+[Sprint 24 / v1.5.0 Release Notes](SPRINT24_RELEASE_NOTES.md) — pending release.
 
 ## Repository layout
 
