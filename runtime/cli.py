@@ -97,13 +97,18 @@ EXIT_INTERNAL_ERROR = 2
 
 ConfigDirOption = Annotated[
     Path,
-    typer.Option("--config-dir", help="Directory holding global.yaml / environments / modules / pipelines / connectors."),
+    typer.Option(
+        "--config-dir",
+        help="Directory holding global.yaml / environments / modules / pipelines / connectors.",
+    ),
 ]
 PluginPathOption = Annotated[
     list[Path] | None,
     typer.Option("--plugin-path", help="A directory to search for plugin manifests. Repeatable."),
 ]
-JsonOption = Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON instead of a human-readable render.")]
+JsonOption = Annotated[
+    bool, typer.Option("--json", help="Emit machine-readable JSON instead of a human-readable render.")
+]
 EnvironmentOption = Annotated[
     str | None, typer.Option("--environment", help="Overrides the environment layer (default: development).")
 ]
@@ -172,7 +177,9 @@ def doctor(
                 f"{info.enabled_module_count} enabled, {info.started_module_count} started"
             )
             if not info.module_health:
-                lines.append("No modules installed yet — nothing to health-check. This is expected in Sprint 1.")
+                lines.append(
+                    "No modules installed yet — nothing to health-check. This is expected in Sprint 1."
+                )
             for module_id, health in info.module_health.items():
                 mark = "OK" if health.healthy else "FAIL"
                 lines.append(f"  [{mark}] {module_id}: {health.detail}")
@@ -436,12 +443,16 @@ def plugins_list(
         raise typer.Exit(EXIT_OK)
 
     if not discovered:
-        typer.echo("No plugins installed. This is expected in Sprint 1 — the Plugin Registry is ready to discover them.")
+        typer.echo(
+            "No plugins installed. This is expected in Sprint 1 — the Plugin Registry is ready to discover them."
+        )
         raise typer.Exit(EXIT_OK)
 
     for plugin in discovered:
         m = plugin.manifest
-        typer.echo(f"{m.module_id}  ({m.display_name} v{m.version}, enabled_by_default={m.enabled_by_default})")
+        typer.echo(
+            f"{m.module_id}  ({m.display_name} v{m.version}, enabled_by_default={m.enabled_by_default})"
+        )
         if m.capabilities_provided:
             typer.echo(f"    provides: {', '.join(m.capabilities_provided)}")
         if m.capabilities_required:
@@ -467,7 +478,11 @@ def config_validate(
     try:
         issues = loader.validate()
     except Exception as exc:  # unexpected — not a validation-shaped failure
-        _emit({"ok": False, "error": str(exc)}, as_json=json, render=f"Unexpected error during validation: {exc}")
+        _emit(
+            {"ok": False, "error": str(exc)},
+            as_json=json,
+            render=f"Unexpected error during validation: {exc}",
+        )
         raise typer.Exit(EXIT_INTERNAL_ERROR) from exc
 
     if json:
@@ -504,11 +519,15 @@ DEFAULT_TIMEOUT_SECONDS = 900.0
 RepositoryArgument = Annotated[str, typer.Argument(help="Canonical repository name: frappe or erpnext.")]
 ExtractVersionOption = Annotated[
     str,
-    typer.Option("--version", help="Repository version stamped on the Evidence (required: never auto-detected)."),
+    typer.Option(
+        "--version", help="Repository version stamped on the Evidence (required: never auto-detected)."
+    ),
 ]
 ExtractCommitOption = Annotated[
     str,
-    typer.Option("--commit", help="Repository commit stamped on the Evidence (required: never auto-detected)."),
+    typer.Option(
+        "--commit", help="Repository commit stamped on the Evidence (required: never auto-detected)."
+    ),
 ]
 AggregateVersionOption = Annotated[
     str,
@@ -516,12 +535,16 @@ AggregateVersionOption = Annotated[
 ]
 SourceRootOption = Annotated[
     Path | None,
-    typer.Option("--source-root", help=f"Repository checkout to read (default: {DEFAULT_APPS_ROOT}/<repository>)."),
+    typer.Option(
+        "--source-root", help=f"Repository checkout to read (default: {DEFAULT_APPS_ROOT}/<repository>)."
+    ),
 ]
 OutputDirOption = Annotated[
     Path, typer.Option("--output-dir", help="Directory the Evidence artifacts are written to.")
 ]
-MaxFilesOption = Annotated[int, typer.Option("--max-files", help="Ceiling on files walked before truncating.")]
+MaxFilesOption = Annotated[
+    int, typer.Option("--max-files", help="Ceiling on files walked before truncating.")
+]
 TimeoutOption = Annotated[float, typer.Option("--timeout-seconds", help="Wall-clock ceiling for the walk.")]
 
 
@@ -622,7 +645,9 @@ def evidence_extract(
         _fail(_validation_message(exc), as_json=json)
 
     statistics = evidence_set.statistics
-    warnings = tuple(f"could not parse {error.relative_path}: {error.reason}" for error in evidence_set.errors)
+    warnings = tuple(
+        f"could not parse {error.relative_path}: {error.reason}" for error in evidence_set.errors
+    )
     if evidence_set.truncated:
         warnings = (
             f"the {max_files}-file ceiling was reached; this Evidence describes part of the tree only",
@@ -661,6 +686,59 @@ PatternDirOption = Annotated[
 PatternInputDirOption = Annotated[
     Path, typer.Option("--pattern-dir", help="Directory holding the persisted Pattern artifacts.")
 ]
+SupportingOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--supporting",
+        help="Another corpus, as <repository>:<version>, used to resolve inheritance only. "
+        "Repeatable. Contributes no occurrences and no population members.",
+    ),
+]
+
+
+def _resolve_supporting_corpora(
+    supporting: list[str] | None, evidence_dir: Path, *, subject: str, as_json: bool
+) -> tuple[tuple[Path, Path], ...]:
+    """Turn `--supporting frappe:v15.103.1` into artifact paths.
+
+    A supporting corpus is named the same way the subject is -- repository
+    plus version -- rather than by file path, so the two cannot be
+    specified in incompatible ways and a typo produces a readable error
+    instead of a missing-file traceback.
+
+    Only the *shape* is validated here. Whether a corpus may legitimately
+    support this subject -- it must be a different repository, and each
+    repository may appear once -- is the engine's own precondition, and it
+    is left to the engine so there is exactly one place that decides it.
+    """
+
+    resolved: list[tuple[Path, Path]] = []
+    for entry in supporting or []:
+        name, separator, entry_version = entry.partition(":")
+        if not separator or not name or not entry_version:
+            _fail(
+                f"Invalid --supporting value '{entry}'. Expected <repository>:<version>, "
+                f"for example 'frappe:v15.103.1'.",
+                as_json=as_json,
+            )
+        if name == subject:
+            _fail(
+                f"--supporting '{entry}' names the repository being measured. A corpus cannot be "
+                f"its own resolution context.",
+                as_json=as_json,
+            )
+        supporting_evidence = evidence_dir / f"{name}-{entry_version}.evidence.jsonl"
+        supporting_meta = evidence_dir / f"{name}-{entry_version}.meta.json"
+        if not supporting_evidence.is_file():
+            _fail(
+                f"No Evidence artifact at '{supporting_evidence}'. "
+                f"Run `architect evidence extract {name}` first.",
+                as_json=as_json,
+            )
+        resolved.append((supporting_evidence, supporting_meta))
+    return tuple(resolved)
+
+
 MinOccurrencesOption = Annotated[
     int | None,
     typer.Option(
@@ -690,6 +768,7 @@ def patterns_aggregate(
     evidence_dir: EvidenceDirOption = DEFAULT_EVIDENCE_DIR,
     output_dir: PatternDirOption = DEFAULT_PATTERN_DIR,
     min_occurrences: MinOccurrencesOption = None,
+    supporting: SupportingOption = None,
     correlation_id: CorrelationIdOption = None,
     json: JsonOption = False,
 ) -> None:
@@ -698,6 +777,16 @@ def patterns_aggregate(
 
     Reads the Evidence artifact identified by `<repository>` and
     `--version`; never re-runs extraction and never touches a source tree.
+
+    **`--supporting` supplies inheritance-resolution context, not more
+    data to measure.** A supporting corpus contributes class definitions
+    so a chain that leaves the measured repository can still be resolved;
+    it contributes no occurrence, joins no population, and produces no
+    `Pattern`. Measuring `erpnext` without `frappe` resolves 492
+    controllers where the true figure is 510, because 18 of them reach
+    `Document` only through a frappe-defined base -- a wrong number rather
+    than an error, which is why `PatternSet.resolution_provenance` records
+    exactly which corpora were supplied.
 
     **Every number printed comes from the engine.** The `SUMMARY` rows are
     `AggregationStatistics` fields verbatim — nothing here counts,
@@ -726,7 +815,12 @@ def patterns_aggregate(
     evidence_path = evidence_dir / f"{repository}-{version}.evidence.jsonl"
     meta_path = evidence_dir / f"{repository}-{version}.meta.json"
     if not evidence_path.is_file():
-        _fail(f"No Evidence artifact at '{evidence_path}'. Run `architect evidence extract` first.", as_json=json)
+        _fail(
+            f"No Evidence artifact at '{evidence_path}'. Run `architect evidence extract` first.",
+            as_json=json,
+        )
+
+    supporting_paths = _resolve_supporting_corpora(supporting, evidence_dir, subject=repository, as_json=json)
 
     patterns_path = output_dir / f"{repository}-{version}.patterns.jsonl"
     pattern_meta_path = output_dir / f"{repository}-{version}.meta.json"
@@ -741,6 +835,7 @@ def patterns_aggregate(
             min_occurrences=min_occurrences if min_occurrences is not None else DEFAULT_MIN_OCCURRENCES,
             correlation_id=correlation_id or str(uuid.uuid4()),
             requested_by="cli",
+            supporting_paths=supporting_paths,
         )
     except EVIDENCE_PLATFORM_ERRORS as exc:
         _fail(str(exc), as_json=json)

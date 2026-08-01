@@ -19,9 +19,12 @@ from aggregation.contract import AggregationStatus
 from aggregation.inheritance import ClassDescentResult
 from aggregation.population import POPULATION_BASES
 from aggregation.resolvers import (
+    OCCURRENCE_FILTERS,
     POPULATION_RESOLVERS,
     WHITELIST_FAMILY_SUBJECTS,
     PopulationContext,
+    filter_controller_lifecycle_hook_occurrences,
+    owning_class_symbol,
     resolve_controller_lifecycle_hook_population,
     resolve_whitelisted_api_population,
 )
@@ -360,4 +363,97 @@ def test_the_controller_resolver_is_registered_for_its_category() -> None:
     assert (
         POPULATION_RESOLVERS[EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK]
         is resolve_controller_lifecycle_hook_population
+    )
+
+
+# -- Numerator / population alignment (Sprint 22, Commit 7) ----------------------------------------------
+
+
+def test_the_owning_class_is_the_hook_symbol_without_its_final_segment() -> None:
+    assert owning_class_symbol("erpnext.accounts.custom.address.ERPNextAddress.validate") == (
+        "erpnext.accounts.custom.address.ERPNextAddress"
+    )
+
+
+def test_the_symbol_join_matches_the_collectors_own_formats() -> None:
+    # Drift guard. These two helpers live in different packages and may
+    # not import each other, so nothing but this test keeps them aligned
+    # -- and drift would not raise, it would silently empty the numerator.
+    from evidence.collectors import _qualified_class_symbol, _qualified_symbol
+
+    module, class_name = "erpnext.accounts.custom.address", "ERPNextAddress"
+    hook_symbol = _qualified_symbol(module, class_name, "validate")
+
+    assert owning_class_symbol(hook_symbol) == _qualified_class_symbol(module, class_name)
+
+
+def _hook_record(symbol: str, subject: str = "validate") -> Evidence:
+    return _evidence(symbol=symbol, subject=subject, category=EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK)
+
+
+def test_a_hook_on_a_population_member_is_countable() -> None:
+    descent = ClassDescentResult(descendants=("erpnext.mod.Customer",))
+    kept = filter_controller_lifecycle_hook_occurrences(
+        [_hook_record("erpnext.mod.Customer.validate")], _context(descent)
+    )
+    assert [record.symbol for record in kept] == ["erpnext.mod.Customer.validate"]
+
+
+def test_a_hook_on_a_non_member_is_not_countable() -> None:
+    # A class defining a method named `validate` while not descending from
+    # Document does not thereby have a lifecycle hook.
+    descent = ClassDescentResult(descendants=("erpnext.mod.Customer",))
+    kept = filter_controller_lifecycle_hook_occurrences(
+        [_hook_record("erpnext.mod.EmailBody.validate")], _context(descent)
+    )
+    assert kept == []
+
+
+def test_a_mixed_set_keeps_exactly_the_members() -> None:
+    descent = ClassDescentResult(descendants=("erpnext.mod.A", "erpnext.mod.C"))
+    kept = filter_controller_lifecycle_hook_occurrences(
+        [
+            _hook_record("erpnext.mod.A.validate"),
+            _hook_record("erpnext.mod.B.validate"),
+            _hook_record("erpnext.mod.C.on_submit", "on_submit"),
+            _hook_record("erpnext.mod.D.on_submit", "on_submit"),
+        ],
+        _context(descent),
+    )
+    assert {record.symbol for record in kept} == {
+        "erpnext.mod.A.validate",
+        "erpnext.mod.C.on_submit",
+    }
+
+
+def test_the_kept_set_is_never_larger_than_the_population() -> None:
+    # The invariant, stated directly against the filter: whatever it
+    # returns, the distinct owning classes are a subset of the population.
+    descent = ClassDescentResult(descendants=("erpnext.mod.A", "erpnext.mod.B"))
+    records = [_hook_record(f"erpnext.mod.C{index}.validate") for index in range(50)]
+    records += [_hook_record("erpnext.mod.A.validate"), _hook_record("erpnext.mod.B.validate")]
+
+    kept = filter_controller_lifecycle_hook_occurrences(records, _context(descent))
+    owners = {owning_class_symbol(record.symbol) for record in kept}
+
+    assert owners <= set(descent.descendants)
+    assert len(owners) <= len(descent.descendants)
+
+
+def test_an_empty_population_makes_nothing_countable() -> None:
+    kept = filter_controller_lifecycle_hook_occurrences([_hook_record("erpnext.mod.A.validate")], _context())
+    assert kept == []
+
+
+def test_the_whitelist_category_has_no_occurrence_filter() -> None:
+    # Its records define its own population -- carrying the decorator is
+    # both what puts a symbol in the population and what is counted -- so
+    # numerator and denominator are one set by construction.
+    assert EvidenceCategory.WHITELISTED_API_DECORATION not in OCCURRENCE_FILTERS
+
+
+def test_the_lifecycle_filter_is_registered_for_its_category() -> None:
+    assert (
+        OCCURRENCE_FILTERS[EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK]
+        is filter_controller_lifecycle_hook_occurrences
     )

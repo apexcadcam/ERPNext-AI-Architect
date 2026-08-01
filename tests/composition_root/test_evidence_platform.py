@@ -265,7 +265,16 @@ def test_the_composition_root_owns_no_analysis_logic() -> None:
     # data exposure, not logic. Checked against the parsed AST rather than
     # the source text, so a docstring can discuss branching without the
     # test mistaking prose for code.
-    forbidden = (ast.If, ast.For, ast.While, ast.Try, ast.Compare, ast.BinOp, ast.comprehension)
+    #
+    # `ast.comprehension` was originally forbidden too, as a crisp proxy
+    # for "owns no logic". Sprint 22's `--supporting` made that proxy wrong
+    # rather than the code: reading N supporting artifacts is unavoidably a
+    # repetition over N, and it filters nothing, counts nothing and decides
+    # nothing. The narrower guard below is what the rule always meant --
+    # no branching, no comparison, no arithmetic -- and a comprehension is
+    # still only permitted because the call allow-list in the next test
+    # constrains what may appear inside one.
+    forbidden = (ast.If, ast.While, ast.Try, ast.Compare, ast.BinOp)
     violations = [
         type(node).__name__
         for function in _function_bodies()
@@ -294,7 +303,25 @@ def test_these_functions_only_call_engine_and_persistence_entry_points() -> None
         "aggregate_patterns",
         "write_pattern_set",
         "read_pattern_set",
+        # A container constructor, not analysis: it materialises the
+        # supporting corpora the caller already named. Nothing is selected
+        # or rejected -- every path supplied is read, in the order given.
+        "tuple",
     }
+
+
+def test_no_loop_statement_appears_anywhere() -> None:
+    # A `for` statement is where filtering and accumulation live, so it
+    # stays forbidden even though a comprehension is now allowed: the
+    # comprehension's permitted calls are bounded by the allow-list above,
+    # a loop body's would not be.
+    violations = [
+        type(node).__name__
+        for function in _function_bodies()
+        for node in ast.walk(function)
+        if isinstance(node, ast.For | ast.AsyncFor)
+    ]
+    assert violations == []
 
 
 def test_composition_root_package_does_not_re_export_these_functions() -> None:

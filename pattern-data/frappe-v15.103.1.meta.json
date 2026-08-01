@@ -1,7 +1,7 @@
 {
-  "aggregated_at": "2026-07-29T15:02:58.533435+00:00",
+  "aggregated_at": "2026-08-01T10:37:49.518893+00:00",
   "commit": "61ab7e2b2409b293ffd3c8f72d730fa89b201332",
-  "correlation_id": "sprint22-corpus",
+  "correlation_id": "3d557c7a-9b85-43f1-af9d-d81715eddff7",
   "observed_below_threshold": [
     {
       "evidence_category": "whitelisted_api_decoration",
@@ -24,7 +24,7 @@
       "subject": "redis_cache"
     }
   ],
-  "pattern_set_id": "5e693b6d-c062-4414-9159-9805ee5b92dd",
+  "pattern_set_id": "3a02a95c-e8c4-4a9c-9678-ad88668e1343",
   "repository": "frappe",
   "resolution_provenance": {
     "measured_corpus": {

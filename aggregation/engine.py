@@ -40,7 +40,12 @@ from aggregation.contract import (
 )
 from aggregation.inheritance import ClassDescentResult, resolve_descent
 from aggregation.population import STRUCTURAL_CATEGORIES, get_population_basis
-from aggregation.resolvers import CONTROLLER_POPULATION_ROOT, POPULATION_RESOLVERS, PopulationContext
+from aggregation.resolvers import (
+    CONTROLLER_POPULATION_ROOT,
+    OCCURRENCE_FILTERS,
+    POPULATION_RESOLVERS,
+    PopulationContext,
+)
 
 #: §7.7's fixed schema version for this Sprint's contract shape. Bumped
 #: only when `Pattern`'s or `PatternSet`'s own fields change.
@@ -151,9 +156,22 @@ def _aggregate_category(
         # empty population.
         return [], [], _skip(category, "the resolved population is empty", len(records))
 
+    # **The numerator must be drawn from the population, not merely
+    # compared against it.** A category whose records do not themselves
+    # define its population -- CONTROLLER_LIFECYCLE_HOOK is the first --
+    # can otherwise count symbols the denominator never contained, which
+    # makes `support` a ratio between two different sets: silently
+    # inflated, and outright invalid once occurrences exceed population.
+    #
+    # Enforced by construction here rather than checked afterwards.
+    # Clamping a support above 1.0 back to 1.0 would hide the same defect
+    # while keeping the number wrong.
+    occurrence_filter = OCCURRENCE_FILTERS.get(category)
+    countable = records if occurrence_filter is None else occurrence_filter(records, context)
+
     symbols_by_subject: dict[str, set[str]] = defaultdict(set)
     evidence_ids_by_subject: dict[str, set[str]] = defaultdict(set)
-    for record in records:
+    for record in countable:
         symbols_by_subject[record.subject].add(record.symbol)
         evidence_ids_by_subject[record.subject].add(record.evidence_id)
 

@@ -1,7 +1,7 @@
 {
-  "aggregated_at": "2026-07-29T15:02:58.542827+00:00",
+  "aggregated_at": "2026-08-01T10:37:49.957323+00:00",
   "commit": "1d14ba16398db3a220873509565c60f2932bed81",
-  "correlation_id": "sprint22-corpus",
+  "correlation_id": "e47bac5f-8386-4bb5-8704-8fda68661540",
   "observed_below_threshold": [
     {
       "evidence_category": "whitelisted_api_decoration",
@@ -19,7 +19,7 @@
       "subject": "staticmethod"
     }
   ],
-  "pattern_set_id": "ebb73c2c-8175-47f7-9bd2-44fa1e36b6dd",
+  "pattern_set_id": "733dffb9-4742-4ebe-8985-d0e2c769662c",
   "repository": "erpnext",
   "resolution_provenance": {
     "measured_corpus": {

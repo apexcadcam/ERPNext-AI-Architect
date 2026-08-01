@@ -20,6 +20,7 @@ from evidence.contract import (
 from aggregation.contract import (
     AggregationRequest,
     AggregationStatus,
+    Pattern,
     PatternSet,
     PopulationBasis,
     ResolutionStrategy,
@@ -724,3 +725,126 @@ def test_a_matrix_declared_skip_still_reports_its_blocker(monkeypatch: pytest.Mo
 
     assert result.skipped_aggregations[0].reason == "a stated, disclosed blocker"
     assert result.patterns == ()
+
+
+# -- Numerator / population alignment, end to end (Sprint 22, Commit 7) ----------------------------------
+
+
+def _lifecycle_pattern(result: PatternSet, subject: str = "validate") -> Pattern | None:
+    for pattern in result.patterns:
+        if (
+            pattern.evidence_category is EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK
+            and pattern.subject == subject
+        ):
+            return pattern
+    return None
+
+
+def test_a_hook_on_a_non_controller_does_not_reach_the_numerator() -> None:
+    # `Helper` defines a method named `validate` but descends from
+    # nothing. Before this fix it inflated the numerator against a
+    # population it was never part of.
+    records = [
+        *_class("Controller", "Document"),
+        *_class("Helper"),
+        _hook("Controller", "validate"),
+        _hook("Helper", "validate"),
+    ]
+    result = aggregate_patterns(_request(*records, min_occurrences=1))
+
+    pattern = _lifecycle_pattern(result)
+    assert pattern is not None
+    assert pattern.occurrences == 1
+    assert pattern.population == 1
+    assert pattern.support == 1.0
+
+
+def test_a_mixed_corpus_produces_the_aligned_numerator() -> None:
+    records = [
+        *_class("A", "Document"),
+        *_class("B", "Document"),
+        *_class("NotAController"),
+        _hook("A", "validate"),
+        _hook("B", "validate"),
+        _hook("NotAController", "validate"),
+    ]
+    result = aggregate_patterns(_request(*records, min_occurrences=1))
+
+    pattern = _lifecycle_pattern(result)
+    assert pattern is not None
+    assert (pattern.occurrences, pattern.population) == (2, 2)
+
+
+def test_occurrences_can_never_exceed_population_through_this_path() -> None:
+    # The shape that used to raise: many hook-bearing non-controllers
+    # against a single real controller. Support must stay a share.
+    records = [*_class("Only", "Document"), _hook("Only", "validate")]
+    for index in range(25):
+        records += [*_class(f"Fake{index}"), _hook(f"Fake{index}", "validate")]
+
+    result = aggregate_patterns(_request(*records, min_occurrences=1))
+
+    pattern = _lifecycle_pattern(result)
+    assert pattern is not None
+    assert pattern.occurrences <= pattern.population
+    assert 0.0 <= pattern.support <= 1.0
+
+
+def test_every_lifecycle_pattern_satisfies_the_invariant() -> None:
+    records = [
+        *_class("A", "Document"),
+        *_class("B", "A"),
+        *_class("Loose"),
+        _hook("A", "validate"),
+        _hook("B", "on_submit"),
+        _hook("Loose", "on_trash"),
+    ]
+    result = aggregate_patterns(_request(*records, min_occurrences=1))
+
+    for pattern in result.patterns:
+        assert 0 <= pattern.occurrences <= pattern.population
+        assert 0.0 <= pattern.support <= 1.0
+    # `Loose` contributes nothing at all, not even a below-threshold entry
+    # under its own subject.
+    assert _lifecycle_pattern(result, "on_trash") is None
+
+
+def test_a_supporting_corpus_never_contributes_an_occurrence() -> None:
+    # It enlarges the population by resolving ancestry, and contributes no
+    # hook of its own even when it has one.
+    supporting = EvidenceSet(
+        evidence_set_id="evset-frappe",
+        schema_version="2.0",
+        repository=CanonicalRepository.FRAPPE,
+        version="v15.103.1",
+        commit=_COMMIT,
+        extracted_at="2026-07-27T12:00:00+00:00",
+        correlation_id="corr-1",
+        evidence=(
+            *_class("Mixin", "Document", module="frappe.utils"),
+            _hook("Mixin", "validate", module="frappe.utils"),
+        ),
+        errors=(),
+        truncated=False,
+        statistics=EvidenceStatistics(
+            files_examined=1, files_skipped=0, files_failed=0, evidence_extracted=3
+        ),
+    )
+    records = [*_class("A", "Document"), *_class("B", "Mixin"), _hook("A", "validate")]
+
+    result = aggregate_patterns(
+        AggregationRequest(
+            evidence_set=_evidence_set(*records),
+            supporting_evidence_sets=(supporting,),
+            min_occurrences=1,
+            correlation_id="corr-1",
+            requested_by="test-suite",
+        )
+    )
+
+    pattern = _lifecycle_pattern(result)
+    assert pattern is not None
+    assert pattern.population == 2  # A and B, resolved through frappe's Mixin
+    assert pattern.occurrences == 1  # frappe's own Mixin.validate is not counted
+    for supporting_id in pattern.supporting_evidence_ids:
+        assert "frappe.utils" not in supporting_id

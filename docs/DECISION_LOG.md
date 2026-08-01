@@ -218,6 +218,24 @@ The committed ERPNext `PatternSet` uses `frappe` as resolution context — popul
 
 ---
 
+## D18 — The numerator must be drawn from the population, not compared to it
+
+**Decided:** Sprint 22, Commit 7 · **Lives in:** `OCCURRENCE_FILTERS` · **Spec:** [Aggregation §5.1](evidence-platform/PATTERN_AGGREGATION_SPECIFICATION.md)
+
+A behavioural occurrence contributes to `support` only when its subject entity is a member of the population defining that support.
+
+**Instead of:** counting every record of a category, which is correct only when those records also define the population — true of `WHITELISTED_API_DECORATION`, false of `CONTROLLER_LIFECYCLE_HOOK`.
+
+**Why it matters:** a hook record says a class defines a method with a lifecycle name; it does not say the class is a controller. Counting all of them against a denominator of `Document` descendants produced a ratio between two different sets — silently inflated on a large corpus, and an outright validation failure on a small one.
+
+**Found by a consumer, not a test.** Commit 6's `--supporting` flag needed a fixture, and the fixture crashed. On the real corpus the same defect had been quiet: frappe's `validate` read `87/275` where the aligned figure is `84/275`. **The second time a consumer surfaced what 100% coverage did not** — see D8 for the first.
+
+**Not a special case:** no repository name and no class name appears in the fix. Three frappe classes were excluded because they are not `Document` descendants, not because they were named.
+
+**Clamping was explicitly rejected.** Capping support at `1.0` would have hidden the defect while leaving the number wrong.
+
+---
+
 ## Decisions deliberately *not* taken
 
 | Not done | Why not, and where it is tracked |

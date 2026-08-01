@@ -91,6 +91,10 @@ class PopulationContext:
 #: from its meaning.
 Resolver = Callable[[Sequence[Evidence], PopulationContext], tuple[int, str]]
 
+#: An occurrence filter narrows a category's records to those eligible to
+#: be counted, before any grouping happens.
+OccurrenceFilter = Callable[[Sequence[Evidence], PopulationContext], Sequence[Evidence]]
+
 
 def resolve_whitelisted_api_population(
     records: Sequence[Evidence], context: PopulationContext
@@ -130,6 +134,59 @@ def resolve_controller_lifecycle_hook_population(
     """
 
     return len(context.descent.descendants), _CONTROLLER_POPULATION_DESCRIPTION
+
+
+def owning_class_symbol(symbol: str) -> str:
+    """The class a member symbol belongs to.
+
+    The lifecycle-hook collector emits `<module>.<Class>.<hook>`; a class
+    definition is `<module>.<Class>`. Dropping the final segment is the
+    join between the two, and it is **string equality** -- Inheritance
+    Resolution §2.3. Drift in either format would not raise; it would
+    silently empty the numerator, so `tests/aggregation/test_resolvers.py`
+    asserts this against the collector's own helpers rather than trusting
+    the two to stay aligned.
+    """
+
+    return symbol.rsplit(".", 1)[0]
+
+
+def filter_controller_lifecycle_hook_occurrences(
+    records: Sequence[Evidence], context: PopulationContext
+) -> Sequence[Evidence]:
+    """Keep only hooks whose owning class is in the population.
+
+    **The correctness invariant this exists to enforce:** a behavioural
+    occurrence contributes to `support` only when its subject entity is a
+    member of the population defining that support. Without it the
+    numerator counts distinct symbols across *every* lifecycle-hook
+    record while the denominator counts resolved `Document` descendants
+    -- two different sets, so the ratio is not a share of anything.
+
+    Real cases this removes, none of them named here or anywhere in the
+    code: classes that define a method called `validate` or `on_update`
+    but are not `Document` subclasses, so the method is not a lifecycle
+    hook at all. The rule is generic; the examples are incidental.
+
+    Uses the population already resolved once and carried on the context.
+    It performs no second resolution and duplicates no ancestry logic.
+    """
+
+    population = frozenset(context.descent.descendants)
+    return [record for record in records if owning_class_symbol(record.symbol) in population]
+
+
+#: Which categories restrict their numerator, and how.
+#:
+#: A category absent here counts every record it has -- the correct
+#: default when a category's records *define* its own population, as
+#: `WHITELISTED_API_DECORATION`'s do: carrying the decorator is both what
+#: puts a symbol in the population and what is being counted, so numerator
+#: and denominator are drawn from one set by construction and no filter
+#: could change the result.
+OCCURRENCE_FILTERS: dict[EvidenceCategory, OccurrenceFilter] = {
+    EvidenceCategory.CONTROLLER_LIFECYCLE_HOOK: filter_controller_lifecycle_hook_occurrences,
+}
 
 
 #: §8's dispatch table. Must stay synchronized with

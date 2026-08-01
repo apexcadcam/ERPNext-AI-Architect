@@ -337,3 +337,163 @@ def test_aggregate_works_after_the_source_tree_is_gone(
     result = runner.invoke(app, _args(evidence_dir, pattern_dir))
 
     assert result.exit_code == 0
+
+
+# -- --supporting: multi-corpus resolution (Sprint 22, Commit 6) ----------------------------------------
+
+
+def _extract_into(out: Path, repository: str, version: str, source_root: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "evidence",
+            "extract",
+            repository,
+            "--version",
+            version,
+            "--commit",
+            _COMMIT,
+            "--source-root",
+            str(source_root),
+            "--output-dir",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+
+
+@pytest.fixture
+def frappe_evidence_dir(tmp_path: Path) -> Path:
+    """Two real Evidence artifacts in one directory.
+
+    The erpnext corpus holds a controller whose chain **leaves the
+    repository**: `Account(Mixin)`, where `Mixin(Document)` is defined only
+    in frappe. Resolved alone it yields a population of 1 (`Direct`);
+    resolved with frappe supplied it yields 2. That difference is the
+    feature, so the fixture is built to exhibit it.
+    """
+
+    out = tmp_path / "multi-evidence"
+
+    erpnext_src = tmp_path / "erpnext-multi"
+    (erpnext_src / "erpnext" / "accounts").mkdir(parents=True)
+    # `Account` carries no hook deliberately. With only `Direct` bearing
+    # one, the numerator stays inside the population whether or not frappe
+    # is supplied -- otherwise this fixture would trip the numerator-scope
+    # defect recorded in the Commit 6 report rather than test the flag.
+    (erpnext_src / "erpnext" / "accounts" / "account.py").write_text(
+        "class Direct(Document):\n"
+        "    def validate(self):\n"
+        "        pass\n\n\n"
+        "class Account(Mixin):\n"
+        "    pass\n"
+    )
+    _extract_into(out, "erpnext", _VERSION, erpnext_src)
+
+    frappe_src = tmp_path / "frappe-src"
+    (frappe_src / "frappe" / "utils").mkdir(parents=True)
+    (frappe_src / "frappe" / "utils" / "nestedset.py").write_text("class Mixin(Document):\n    pass\n")
+    _extract_into(out, "frappe", "v15.103.1", frappe_src)
+
+    return out
+
+
+def test_supporting_is_optional_and_absent_by_default(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--json"))
+    assert result.exit_code == 0
+
+
+def test_supporting_appears_in_the_command_help() -> None:
+    result = runner.invoke(app, ["patterns", "aggregate", "--help"])
+    assert result.exit_code == 0
+    assert "--supporting" in result.stdout
+
+
+def test_a_supporting_corpus_is_recorded_in_the_provenance(
+    frappe_evidence_dir: Path, pattern_dir: Path
+) -> None:
+    result = runner.invoke(
+        app, _args(frappe_evidence_dir, pattern_dir, "--supporting", "frappe:v15.103.1", "--json")
+    )
+    assert result.exit_code == 0
+
+    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    provenance = meta["resolution_provenance"]
+    assert provenance["strategy"] == "multi_corpus"
+    assert [ref["repository"] for ref in provenance["supporting_corpora"]] == ["frappe"]
+    assert provenance["supporting_corpora"][0]["version"] == "v15.103.1"
+
+
+def test_without_supporting_the_strategy_is_single_corpus(
+    frappe_evidence_dir: Path, pattern_dir: Path
+) -> None:
+    result = runner.invoke(app, _args(frappe_evidence_dir, pattern_dir, "--json"))
+    assert result.exit_code == 0
+
+    meta = json_module.loads((pattern_dir / f"erpnext-{_VERSION}.meta.json").read_text())
+    provenance = meta["resolution_provenance"]
+    assert provenance["strategy"] == "single_corpus"
+    assert provenance["supporting_corpora"] == []
+
+
+def test_a_supporting_corpus_contributes_no_pattern_of_its_own(
+    frappe_evidence_dir: Path, pattern_dir: Path
+) -> None:
+    # §5.2. frappe explains why an erpnext class is a controller; it does
+    # not thereby become one, and it owns nothing in this artifact.
+    result = runner.invoke(
+        app, _args(frappe_evidence_dir, pattern_dir, "--supporting", "frappe:v15.103.1", "--json")
+    )
+    assert result.exit_code == 0
+
+    lines = (pattern_dir / f"erpnext-{_VERSION}.patterns.jsonl").read_text().splitlines()
+    for line in lines:
+        if line.strip():
+            assert json_module.loads(line)["repository"] == "erpnext"
+
+
+def test_a_malformed_supporting_value_fails_with_a_readable_message(
+    evidence_dir: Path, pattern_dir: Path
+) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", "frappe"))
+    assert result.exit_code == 1
+    assert "<repository>:<version>" in result.stdout
+
+
+def test_supporting_may_not_name_the_measured_repository(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", f"erpnext:{_VERSION}"))
+    assert result.exit_code == 1
+    assert "its own resolution context" in result.stdout
+
+
+def test_a_missing_supporting_artifact_fails_with_a_next_step(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", "frappe:v99.0.0"))
+    assert result.exit_code == 1
+    assert "architect evidence extract frappe" in result.stdout
+
+
+def test_the_same_supporting_repository_twice_is_rejected_by_the_engine(
+    frappe_evidence_dir: Path, pattern_dir: Path
+) -> None:
+    # The CLI validates shape; whether a corpus may support this subject is
+    # the engine's precondition, so there is exactly one place that decides.
+    result = runner.invoke(
+        app,
+        _args(
+            frappe_evidence_dir,
+            pattern_dir,
+            "--supporting",
+            "frappe:v15.103.1",
+            "--supporting",
+            "frappe:v15.103.1",
+        ),
+    )
+    assert result.exit_code == 1
+    assert "more than once" in result.stdout
+
+
+def test_a_failing_supporting_run_still_emits_all_six_sections(evidence_dir: Path, pattern_dir: Path) -> None:
+    result = runner.invoke(app, _args(evidence_dir, pattern_dir, "--supporting", "nonsense"))
+    for section in SECTION_ORDER:
+        assert section.upper().replace("_", " ") in result.stdout
+    assert result.stdout.rstrip().endswith("exit: 1")

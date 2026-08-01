@@ -65,6 +65,32 @@ This gap was found by **measurement, not assumption**, and it is recorded as a p
 
 The governing principle. A Pattern without a denominator is a count wearing the costume of a rate. `Pattern.population` is constrained `ge=1` so a zero denominator is *unrepresentable* at the type level and cannot be produced even by a future bug in a resolver.
 
+## 5.1 The membership invariant
+
+**A behavioural occurrence contributes to `support` only when its subject entity is a member of the population defining that support.**
+
+Formally, for every `Pattern`:
+
+```
+occurrence_symbols ⊆ population_symbols
+    ⇒  0 ≤ occurrences ≤ population
+    ⇒  0 ≤ support ≤ 1
+```
+
+This is a **correctness invariant, not a repository-specific fix**. §5 already forbids a Pattern without a denominator; this forbids the subtler error of a numerator and a denominator drawn from *different sets* — a ratio that looks like a share and is not one.
+
+It binds any category whose records do not themselves define its population. `WHITELISTED_API_DECORATION` satisfies it by construction, because carrying the decorator is both what puts a symbol in the population and what is counted. `CONTROLLER_LIFECYCLE_HOOK` does not: a hook record says a class defines a method with a lifecycle name, which is not the same as that class being a controller.
+
+**Enforced by computation, never checked afterwards.** `OCCURRENCE_FILTERS` in [`aggregation/resolvers.py`](../../aggregation/resolvers.py) narrows a category's records to population members *before* any grouping. A category absent from that registry counts every record it has, which is correct when its records define its own population.
+
+**Clamping is forbidden.** Capping a `support` above `1.0` back to `1.0` would hide the defect while leaving the number wrong. The numerator is corrected instead.
+
+### How it was found
+
+Not by a test written for it. Commit 6 added `--supporting` to the CLI, and the first genuine fixture for the new flag made aggregation **fail outright** — `support: Input should be less than or equal to 1` — because a corpus small enough tipped occurrences past population. On the real corpus the same defect was silent: 3 of frappe's 122 hook-bearing classes were not `Document` descendants, so `validate` read `87/275` where the aligned figure is `84/275`.
+
+This is the second time a **consumer** surfaced what full coverage did not — the first being the denominator gap itself (§2.1). Both are recorded because the pattern is the point: tests confirm what you thought to ask.
+
 ## 6. `support`, not `confidence`
 
 `evaluation.contract.Confidence` already exists in this project as a closed enum meaning *how directly cited evidence supports a conclusion* — a judgement about inferential strength.

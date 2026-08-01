@@ -45,14 +45,49 @@ architect evidence extract frappe --version v15.103.1 --commit 61ab7e2b… --sou
 
 ### 3.2 `architect patterns aggregate <repository>`
 
+**Single corpus** — the repository resolves its own class graph:
+
 ```
-architect patterns aggregate erpnext --version v15.102.0
+architect patterns aggregate frappe --version v15.103.1
 architect patterns aggregate erpnext --version v15.102.0 --min-occurrences 5 --json
+```
+
+**Multi-corpus** — another repository supplies inheritance context:
+
+```
+architect patterns aggregate erpnext --version v15.102.0 --supporting frappe:v15.103.1
 ```
 
 - Reads from `evidence-data/`, writes to `pattern-data/`.
 - `--min-occurrences` defaults to the **registered** `MIN_OCCURRENCES_THRESHOLD`, read from the registry rather than repeated as a literal.
 - Prints every `SkippedAggregation` with its reason in full — the declared gaps must be visible in the terminal, not buried in a file.
+
+#### `--supporting <repository>:<version>` — context, not data
+
+Repeatable. A supporting corpus contributes **class definitions used to resolve inheritance, and nothing else**: no occurrence, no population membership, no `Pattern` of its own. It is named the same way the subject is — repository plus version — so a typo produces a readable error rather than a missing-file traceback, and both artifacts are looked up in `--evidence-dir`.
+
+**Why it exists, in one number.** 18 ERPNext controllers reach `Document` only through a base defined in `frappe` (`NestedSet`, `WebsiteGenerator`). Aggregating ERPNext alone resolves **492** controllers where the true population is **510** — a *wrong number*, not an error, and therefore invisible without this flag.
+
+The CLI validates only the **shape** of the value. Whether a corpus may legitimately support this subject — it must be a different repository, and each repository may appear at most once — is the engine's own precondition, left to the engine so exactly one place decides it.
+
+#### Reading the provenance it produces
+
+Every `PatternSet` records how its populations were reached, so a stored figure can be reproduced:
+
+```json
+"resolution_provenance": {
+  "measured_corpus":    {"repository": "erpnext", "version": "v15.102.0", "commit": "1d14ba16…"},
+  "supporting_corpora": [{"repository": "frappe", "version": "v15.103.1", "commit": "61ab7e2b…"}],
+  "strategy": "multi_corpus",
+  "unresolved_bases_count": 4
+}
+```
+
+- **`strategy`** is `single_corpus` or `multi_corpus`, and cannot contradict the corpora listed beside it — a validator rejects that combination.
+- **`unresolved_bases_count`** is scoped to the *measured* repository: base names it declares that match no class definition in any supplied corpus (`object`, `Exception`, third-party bases). Supplying more context can only ever **shrink** this number, never grow it.
+- **`null`** means no population in that artifact required inheritance resolution — a statement, not a missing value.
+
+Without provenance, `510` and `492` are both defensible ERPNext populations differing only by what was supplied, and a reader could not tell which they were holding.
 
 ### 3.3 `architect patterns report <repository>`
 

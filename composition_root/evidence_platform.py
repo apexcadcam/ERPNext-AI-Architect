@@ -132,6 +132,7 @@ def aggregate_repository_patterns(
     min_occurrences: int,
     correlation_id: str,
     requested_by: str,
+    supporting_paths: tuple[tuple[Path, Path], ...] = (),
 ) -> PatternSet:
     """Read a persisted `EvidenceSet`, aggregate it, and persist the
     resulting `PatternSet`.
@@ -139,11 +140,25 @@ def aggregate_repository_patterns(
     Extraction is never re-run here: the Aggregation Engine consumes
     persisted Evidence only, and this function honours that by reading the
     artifact rather than reaching for a source tree.
+
+    `supporting_paths` carries `(evidence_path, meta_path)` pairs for
+    corpora that supply **inheritance-resolution context only** — never an
+    occurrence, never population membership, never a `Pattern` of their
+    own (Inheritance Resolution §5.2). They are taken as *paths* rather
+    than `EvidenceSet`s for the same reason the subject is: reading them
+    is this layer's job, so `runtime/cli.py` never handles an engine type.
+
+    Defaults to empty, so a single-corpus call is byte-for-byte what it
+    was before this parameter existed.
     """
 
     evidence_set = read_evidence_set(evidence_path, meta_path)
     request = AggregationRequest(
         evidence_set=evidence_set,
+        supporting_evidence_sets=tuple(
+            read_evidence_set(supporting_evidence, supporting_meta)
+            for supporting_evidence, supporting_meta in supporting_paths
+        ),
         min_occurrences=min_occurrences,
         correlation_id=correlation_id,
         requested_by=requested_by,
